@@ -22,7 +22,7 @@ jQuery(function ($) {
 
         orders.forEach(function (order) {
             html += '<tr>' +
-                '<td>' + (order.number || order.id) + '</td>' +
+                '<td><a href="' + order.view_url + '" target="_blank">' + (order.number || order.id) + '</a></td>' +
                 '<td><span class="kiss-status-pill">' + order.status_label + '</span></td>' +
                 '<td>' + order.total + '</td>' +
                 '<td>' + order.date + '</td>' +

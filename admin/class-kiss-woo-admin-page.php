@@ -59,6 +59,16 @@ class KISS_Woo_COS_Admin_Page {
             $menu_slug,
             $callback
         );
+
+        add_submenu_page(
+            $parent_slug,
+            'KISS Benchmark',
+            'KISS Benchmark',
+            $capability,
+            'kiss-benchmark',
+            [$this, 'render_benchmark_page']
+        );
+
     }
 
     /**
@@ -198,8 +208,56 @@ class KISS_Woo_COS_Admin_Page {
                     line-height: 1.4;
                     background: #f1f1f1;
                 }
+                .kiss-cos-orders-table a {
+                    font-weight: 600;
+                    text-decoration: none;
+                }
+                .kiss-cos-orders-table a:hover {
+                    text-decoration: underline;
+                }
+
             </style>
         </div>
         <?php
     }
+
+    public function render_benchmark_page() {
+        require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-benchmark.php';
+
+        $query = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : 'vishal@neochro.me';
+        $results = KISS_Woo_COS_Benchmark::run_tests($query);
+        ?>
+
+        <div class="wrap">
+            <h1>KISS Performance Benchmark</h1>
+
+            <form method="GET">
+                <input type="hidden" name="page" value="kiss-benchmark">
+                <input type="text" name="q" value="<?php echo esc_attr($query); ?>" placeholder="Enter email to test">
+                <button class="button button-primary">Run Benchmark</button>
+            </form>
+
+            <h2>Results (milliseconds)</h2>
+
+            <table class="widefat">
+                <thead>
+                    <tr>
+                        <th>Test</th>
+                        <th>Time (ms)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>WooCommerce Orders Search</td><td><?php echo $results['wc_order_search_ms']; ?></td></tr>
+                    <tr><td>WooCommerce User Search</td><td><?php echo $results['wp_user_search_ms']; ?></td></tr>
+                    <tr><td>KISS Customer Search</td><td><?php echo $results['kiss_customer_search_ms']; ?></td></tr>
+                    <tr><td>KISS Guest Order Search</td><td><?php echo $results['kiss_guest_search_ms']; ?></td></tr>
+                </tbody>
+            </table>
+
+            <p><em>Lower = Faster. KISS should be significantly faster due to optimized lookups and pre-filtered queries.</em></p>
+        </div>
+
+        <?php
+    }
+
 }
