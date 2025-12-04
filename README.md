@@ -1,31 +1,31 @@
 # KISS - Faster Customer & Order Search
 
-A WordPress/WooCommerce plugin that adds a streamlined admin page for quickly locating customers and their recent orders by email or name.
-
-## Features
-- WooCommerce submenu page for unified customer and order search.
-- AJAX-powered results with permission and nonce checks for administrators.
-- Displays key customer metadata, order counts, and quick links to profiles and orders.
-- Optional benchmark page comparing default WooCommerce queries with the plugin's optimized lookups.
+A lightweight WordPress plugin that adds a WooCommerce admin page for quickly searching customers and their orders by email or name. The plugin exposes an authenticated AJAX endpoint that surfaces matching customers and recent orders, plus a basic benchmark page comparing native WooCommerce queries with the optimized lookups used here.
 
 ## Requirements
 - WordPress 6.0+
 - PHP 7.4+
-- WooCommerce installed and active
-- Administrator capability to access the search and benchmark pages
+- WooCommerce active
+- An administrator or shop manager role (capability `manage_woocommerce`) to access the pages and AJAX endpoint.
 
-## Installation
-1. Upload the plugin files to your WordPress installation (or clone into `wp-content/plugins/kiss-woo-fast-search`).
-2. Activate **KISS - Faster Customer & Order Search** from the **Plugins** page.
-3. Ensure WooCommerce is active; otherwise, an admin notice will prompt you to install it.
+## Features
+- Admin submenu under WooCommerce with a simple search form for customers and guest orders.
+- Capability and nonce checks on the AJAX handler to prevent unauthorized access.
+- Server-side validation ensuring search terms are trimmed and at least two characters long.
+- Localized strings and AJAX configuration injected via `wp_localize_script` for a smooth JS experience.
+- Benchmark page (`WooCommerce → KISS Benchmark`) that runs search performance comparisons.
 
 ## Usage
-1. In the WordPress admin, go to **WooCommerce → KISS Search**.
-2. Enter a customer email, partial email, or name and submit to fetch matching customers.
-3. Review customer details and recent orders directly from the results list; guest orders are shown when a valid email is provided.
-4. To compare query performance, open **WooCommerce → KISS Benchmark**, enter a test email, and run the benchmark.
+1. Activate the plugin in WordPress.
+2. Navigate to **WooCommerce → KISS Search**.
+3. Enter an email address, partial email, or customer name, then submit the form.
+4. Results display matching users, counts of their orders, recent orders, and guest order matches (for email input).
+5. To profile performance, visit **WooCommerce → KISS Benchmark** and run the test for any email.
 
 ## Security & Performance Notes
-- The AJAX endpoint requires `manage_woocommerce` or `manage_options` capability and validates requests with a nonce.
-- Guest order lookups only run when the query is a valid email address to limit unnecessary database scans.
-- See **AUDIT.md** for prioritized security and performance findings identified during the latest review.
+- The AJAX endpoint only allows users with `manage_woocommerce` or `manage_options` and enforces a nonce, but customer/order data is inserted into the admin page via JavaScript without escaping. See `AUDIT.md` for the recommended fix.
+- Customer searches currently load full user records with all meta and count orders via unbounded WooCommerce queries; this may be slow on stores with many users/orders. Optimizations are outlined in `AUDIT.md`.
+
+## Development
+- Source resides in the plugin root with supporting classes under `admin/` and `includes/`.
+- JavaScript for the admin experience lives in `admin/kiss-woo-admin.js`.

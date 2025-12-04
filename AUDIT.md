@@ -1,15 +1,16 @@
 # Security and Performance Audit
 
-## Overview
-This audit reviews the KISS - Faster Customer & Order Search WordPress plugin for potential security and performance concerns. Findings are prioritized by potential impact on production sites.
+This audit reviews the current codebase for the KISS - Faster Customer & Order Search plugin. Each finding is assigned a priority (P1 = highest) and severity (High/Medium/Low).
 
 ## Findings
-| ID | Area | Priority | Severity | Details | Recommendation |
-| --- | --- | --- | --- | --- | --- |
-| P1 | Order counting | High | Performance | `get_order_count_for_customer()` loads *all* order IDs for each user match (`limit => -1`), which can trigger large queries and memory use for customers with many orders. | Use a counting query instead of fetching every ID (e.g., `wc_orders_count()` or a `WC_Order_Query` with `paginate => true` and `return => 'ids'` to read only the total). |
-| P2 | Per-customer order lookups | Medium | Performance | `get_recent_orders_for_customer()` runs a separate `wc_get_orders()` call for every matched user, multiplying database work during a search. | Cache results or perform a single batched query keyed by customer IDs, or limit the number of users returned to reduce query volume. |
-| P3 | User search breadth | Medium | Performance | Customer search combines wildcard `search` terms with multiple `meta_query` LIKE filters, which can force full table scans on large user bases. | Add tighter input validation (e.g., require email shape for email meta lookups), add indexes to commonly searched meta fields, or fall back to exact matches when the input looks like an email. |
 
-## Notes
-- AJAX handler correctly checks capabilities and nonces before returning results.
-- Guest order search is constrained to valid email input, reducing unnecessary queries.
+| Priority | Severity | Area | Details | Recommendation |
+| --- | --- | --- | --- | --- |
+| P1 | High | Admin results rendering | Customer and order fields returned by the AJAX handler are concatenated directly into HTML in `admin/kiss-woo-admin.js` without escaping, so any untrusted values stored in names, emails, or order metadata could be rendered as HTML/JS in the admin view. | Escape all dynamic fields before injection (e.g., sanitize in PHP and/or HTML-escape in JS) or build DOM nodes with `textContent` to avoid XSS risk. |
+| P1 | Medium | Order counting | `get_order_count_for_customer()` calls `wc_get_orders` with `limit => -1`, which loads every order object to count them. On stores with many orders this can exhaust memory and slow the response. | Use a lightweight count query (e.g., `wc_orders_count()` or a `WP_Query` with `'fields' => 'ids'` and `'no_found_rows' => true`, or a direct SQL `COUNT(*)`) to avoid loading full order objects. |
+| P2 | Medium | Customer lookup efficiency | Customer searches request `fields => 'all_with_meta'` and an OR `meta_query` with leading wildcard `LIKE` clauses. This pulls all metadata and prevents index use, which can be slow on large user tables. | Limit fields to IDs/basic columns, fetch only required meta, and consider normalizing frequently searched fields or adding indexed columns to reduce full-table scans. |
+| P3 | Low | Benchmark search sanitization | Benchmark page builds a `wc_get_orders` search string with `esc_attr($query)`; the request parameter is sanitized, but `esc_attr` is intended for HTML, not queries. | Apply `sanitize_text_field`/`wc_clean` consistently and rely on WooCommerce query args without HTML escaping, keeping the search term unescaped until rendered. |
+
+## Additional Notes
+- Capability checks (`manage_woocommerce`/`manage_options`) and nonces are present on the AJAX handler, reducing exposure to unauthorized callers.
+- Guest-order search is constrained to valid email strings and capped at 20 results, limiting load from that path.
