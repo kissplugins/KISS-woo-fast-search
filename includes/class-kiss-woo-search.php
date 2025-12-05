@@ -82,26 +82,96 @@ class KISS_Woo_COS_Search {
 
     /**
      * Get total orders for a given customer ID.
+     * Optimized to use direct SQL COUNT query instead of loading all order IDs.
      *
-     * @param int $user_id
+     * @param int $user_id Customer user ID.
      *
-     * @return int
+     * @return int Number of orders for the customer.
      */
     protected function get_order_count_for_customer( $user_id ) {
-        if ( ! function_exists( 'wc_get_orders' ) ) {
+        global $wpdb;
+
+        // Validate user ID
+        if ( empty( $user_id ) || ! is_numeric( $user_id ) ) {
             return 0;
         }
 
-        $orders = wc_get_orders(
-            array(
-                'customer' => $user_id,
-                'limit'    => -1,
-                'return'   => 'ids',
-                'status'   => array_keys( wc_get_order_statuses() ),
-            )
+        $user_id = (int) $user_id;
+
+        try {
+            // Check if HPOS (High-Performance Order Storage) is enabled (WooCommerce 7.1+)
+            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+
+                // Use HPOS tables for better performance
+                $orders_table = $wpdb->prefix . 'wc_orders';
+
+                // Build status list
+                $statuses = array_keys( wc_get_order_statuses() );
+                if ( empty( $statuses ) ) {
+                    return 0;
+                }
+
+                $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+                // Prepare and execute COUNT query
+                $query = $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$orders_table}
+                     WHERE customer_id = %d
+                     AND status IN ({$status_placeholders})",
+                    array_merge( array( $user_id ), $statuses )
+                );
+
+                $count = $wpdb->get_var( $query );
+                return $count !== null ? (int) $count : 0;
+            }
+        } catch ( Exception $e ) {
+            // Fall through to legacy method if HPOS check fails
+        }
+
+        // Fallback to legacy posts table for older WooCommerce or if HPOS not enabled
+        return $this->get_order_count_legacy( $user_id );
+    }
+
+    /**
+     * Get order count using legacy posts table (fallback for older WooCommerce).
+     * Uses direct SQL COUNT query for performance.
+     *
+     * @param int $user_id Customer user ID.
+     *
+     * @return int Number of orders for the customer.
+     */
+    protected function get_order_count_legacy( $user_id ) {
+        global $wpdb;
+
+        // Validate user ID
+        if ( empty( $user_id ) || ! is_numeric( $user_id ) ) {
+            return 0;
+        }
+
+        // Build status list
+        $statuses = array_keys( wc_get_order_statuses() );
+        if ( empty( $statuses ) ) {
+            return 0;
+        }
+
+        $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+        // Direct SQL COUNT query using posts and postmeta tables
+        $query = $wpdb->prepare(
+            "SELECT COUNT(DISTINCT p.ID)
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+             WHERE p.post_type = 'shop_order'
+             AND p.post_status IN ({$status_placeholders})
+             AND pm.meta_key = '_customer_user'
+             AND pm.meta_value = %s",
+            array_merge( $statuses, array( (string) $user_id ) )
         );
 
-        return is_array( $orders ) ? count( $orders ) : 0;
+        $count = $wpdb->get_var( $query );
+        return $count !== null ? (int) $count : 0;
     }
 
     /**
