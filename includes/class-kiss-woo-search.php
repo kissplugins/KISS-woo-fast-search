@@ -65,13 +65,13 @@ class KISS_Woo_COS_Search {
 
                 $results[] = array(
                     'id'           => $user_id,
-                    'name'         => $full_name,
-                    'email'        => $primary_email,
-                    'billing_email'=> $billing_email,
+                    'name'         => esc_html( $full_name ),
+                    'email'        => esc_html( $primary_email ),
+                    'billing_email'=> esc_html( $billing_email ),
                     'registered'   => $user->user_registered,
-                    'registered_h' => $this->format_date_human( $user->user_registered ),
-                    'orders'       => $order_count,
-                    'edit_url'     => get_edit_user_link( $user_id ),
+                    'registered_h' => esc_html( $this->format_date_human( $user->user_registered ) ),
+                    'orders'       => (int) $order_count,
+                    'edit_url'     => esc_url( get_edit_user_link( $user_id ) ),
                     'orders_list'  => $this->get_recent_orders_for_customer( $user_id, $primary_email ),
                 );
             }
@@ -201,16 +201,16 @@ class KISS_Woo_COS_Search {
         $shipping     = $order->get_shipping_method();
 
         return array(
-            'id'            => $order_id,
-            'number'        => $order->get_order_number(),
-            'status'        => $status,
-            'status_label'  => wc_get_order_status_name( $status ),
+            'id'            => (int) $order_id,
+            'number'        => esc_html( $order->get_order_number() ),
+            'status'        => esc_attr( $status ),
+            'status_label'  => esc_html( wc_get_order_status_name( $status ) ),
             'total'         => wc_price( $total, array( 'currency' => $currency ) ),
-            'date'          => $date_created ? $date_created->date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) : '',
-            'payment'       => $payment,
-            'shipping'      => $shipping,
-            'view_url'      => get_edit_post_link( $order_id ),
-            'billing_email' => $order->get_billing_email(),
+            'date'          => esc_html( $date_created ? $date_created->date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) : '' ),
+            'payment'       => esc_html( $payment ),
+            'shipping'      => esc_html( $shipping ),
+            'view_url'      => esc_url( get_edit_post_link( $order_id ) ),
+            'billing_email' => esc_html( $order->get_billing_email() ),
         );
     }
 
