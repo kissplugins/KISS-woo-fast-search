@@ -113,6 +113,7 @@ class KISS_Woo_COS_Admin_Page {
             )
         );
     }
+    
 
     /**
      * Render admin page HTML.
@@ -261,3 +262,30 @@ class KISS_Woo_COS_Admin_Page {
     }
 
 }
+
+add_action( 'admin_enqueue_scripts', function( $hook ) {
+
+    $screen = get_current_screen();
+
+    if ( $screen && $screen->id === 'edit-shop_order' ) {
+
+        wp_enqueue_script(
+            'kiss-woo-order-inject',
+            KISS_WOO_COS_URL . 'admin/kiss-woo-order-inject.js',
+            array( 'jquery' ),
+            KISS_WOO_COS_VERSION,
+            true
+        );
+
+        wp_localize_script(
+            'kiss-woo-order-inject',
+            'KISSCOS',
+            array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce'    => wp_create_nonce('kiss_woo_cos_search'),
+            )
+        );
+    }
+
+});
+
