@@ -4,6 +4,24 @@ jQuery(function ($) {
     var $status = $('#kiss-cos-search-status');
     var $results = $('#kiss-cos-results');
 
+    /**
+     * Escape HTML special characters to prevent XSS attacks.
+     *
+     * @param {string} text - The text to escape
+     * @return {string} - Escaped text safe for HTML insertion
+     */
+    function escapeHtml(text) {
+        if (!text) return '';
+        var map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
     function renderOrdersTable(orders) {
         if (!orders || !orders.length) {
             return '<p><em>No orders found.</em></p>';
@@ -22,13 +40,13 @@ jQuery(function ($) {
 
         orders.forEach(function (order) {
             html += '<tr>' +
-                '<td><a href="' + order.view_url + '" target="_blank">' + (order.number || order.id) + '</a></td>' +
-                '<td><span class="kiss-status-pill">' + order.status_label + '</span></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(order.number || order.id) + '</a></td>' +
+                '<td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td>' +
                 '<td>' + order.total + '</td>' +
-                '<td>' + order.date + '</td>' +
-                '<td>' + (order.payment || '') + '</td>' +
-                '<td>' + (order.shipping || '') + '</td>' +
-                '<td><a href="' + order.view_url + '" class="button button-small" target="_blank">View</a></td>' +
+                '<td>' + escapeHtml(order.date) + '</td>' +
+                '<td>' + escapeHtml(order.payment || '') + '</td>' +
+                '<td>' + escapeHtml(order.shipping || '') + '</td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank">View</a></td>' +
                 '</tr>';
         });
 
@@ -51,19 +69,19 @@ jQuery(function ($) {
             html += '<div class="kiss-cos-customer">';
             html += '<div class="kiss-cos-customer-header">';
             html += '<div class="kiss-cos-customer-name">' +
-                (cust.name || '(No name)') +
-                ' &lt;' + (cust.email || '') + '&gt;' +
+                escapeHtml(cust.name || '(No name)') +
+                ' &lt;' + escapeHtml(cust.email || '') + '&gt;' +
                 '</div>';
             html += '<div class="kiss-cos-customer-meta">' +
-                'User ID: ' + cust.id +
-                (cust.registered_h ? ' · Since: ' + cust.registered_h : '') +
-                ' · Orders: ' + cust.orders +
+                'User ID: ' + escapeHtml(cust.id) +
+                (cust.registered_h ? ' · Since: ' + escapeHtml(cust.registered_h) : '') +
+                ' · Orders: ' + escapeHtml(cust.orders) +
                 '</div>';
             html += '</div>';
 
             html += '<div class="kiss-cos-customer-actions">';
             if (cust.edit_url) {
-                html += '<a href="' + cust.edit_url + '" class="button button-secondary button-small" target="_blank">View user</a>';
+                html += '<a href="' + escapeHtml(cust.edit_url) + '" class="button button-secondary button-small" target="_blank">View user</a>';
             }
             html += '</div>';
 
