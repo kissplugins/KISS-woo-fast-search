@@ -69,6 +69,16 @@ class KISS_Woo_COS_Admin_Page {
             [$this, 'render_benchmark_page']
         );
 
+        add_submenu_page(
+            $parent_slug,
+            'KISS Fast Search',
+            'KISS Fast Search',
+            $capability,
+            'kiss-woo-fast-search',
+            [$this, 'render_woo_fast_search_page']
+        );
+
+
     }
 
     /**
@@ -261,6 +271,188 @@ class KISS_Woo_COS_Admin_Page {
         <?php
     }
 
+    public function render_woo_fast_search_page() {
+
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_die( 'Not allowed.' );
+        }
+
+        $query = isset($_GET['query']) ? sanitize_text_field($_GET['query']) : '';
+
+        echo '<div class="wrap"><h1>KISS Fast Search Results</h1>';
+
+        if (empty($query)) {
+            echo '<p>No query supplied.</p></div>';
+            return;
+        }
+
+        echo '<p><strong>Searching for:</strong> ' . esc_html($query) . '</p>';
+        echo '<div id="kiss-fast-results"><em>Loading...</em></div>';
+
+        ?>
+        <script>
+        jQuery(function($){
+
+            $.ajax({
+                url: "<?php echo admin_url('admin-ajax.php'); ?>",
+                method: "POST",
+                dataType: "json",
+                data: {
+                    action: "kiss_woo_customer_search",
+                    nonce: "<?php echo wp_create_nonce('kiss_woo_cos_search'); ?>",
+                    q: "<?php echo esc_js($query); ?>"
+                }
+            }).done(function(resp){
+                if (!resp || !resp.success) {
+                    $('#kiss-fast-results').html('<p><strong>No results found.</strong></p>');
+                    return;
+                }
+                renderKISSResults(resp.data);
+            }).fail(function(){
+                $('#kiss-fast-results').html('<p><strong>Request failed.</strong></p>');
+            });
+
+        });
+        function renderKISSResults(data) {
+
+            let html = '';
+
+            /** ------------------------------
+             *  CUSTOMERS TABLE
+             * ------------------------------ */
+            if (data.customers && data.customers.length) {
+
+                html += `
+                    <h3 style="margin-top:20px;">Matching Customers</h3>
+
+                    <table class="wp-list-table widefat striped fixed">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Registered</th>
+                                <th>Total Orders</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                data.customers.forEach(c => {
+
+                    html += `
+                        <tr>
+                            <td><strong>${c.name}</strong></td>
+                            <td>${c.email}</td>
+                            <td>${c.registered_h}</td>
+                            <td>${c.orders}</td>
+                            <td>
+                                <a href="${c.edit_url}" target="_blank" class="button">Edit User</a>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td colspan="5" style="background:#f9f9f9; padding:10px 15px;">
+                                <strong>Orders:</strong>
+                                <table class="widefat striped" style="margin-top:10px;">
+                                    <thead>
+                                        <tr>
+                                            <th>Order #</th>
+                                            <th>Status</th>
+                                            <th>Total</th>
+                                            <th>Date</th>
+                                            <th>Payment</th>
+                                            <th>Shipping Method</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                    `;
+
+                    c.orders_list.forEach(order => {
+                        html += `
+                            <tr>
+                                <td>
+                                    <a href="${order.view_url}" target="_blank"><strong>${order.number}</strong></a>
+                                </td>
+                                <td>${order.status_label}</td>
+                                <td>${order.total}</td>
+                                <td>${order.date}</td>
+                                <td>${order.payment}</td>
+                                <td>${order.shipping}</td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            /** ------------------------------
+             *  GUEST ORDERS TABLE
+             * ------------------------------ */
+            if (data.guest_orders && data.guest_orders.length) {
+
+                html += `
+                    <h3 style="margin-top:25px;">Guest Orders (No Account)</h3>
+
+                    <table class="wp-list-table widefat striped fixed">
+                        <thead>
+                            <tr>
+                                <th>Order #</th>
+                                <th>Email</th>
+                                <th>Status</th>
+                                <th>Total</th>
+                                <th>Date</th>
+                                <th>Payment</th>
+                                <th>Shipping Method</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                data.guest_orders.forEach(o => {
+
+                    html += `
+                        <tr>
+                            <td>
+                                <a href="${o.view_url}" target="_blank"><strong>${o.number}</strong></a>
+                            </td>
+                            <td>${o.billing_email}</td>
+                            <td>${o.status_label}</td>
+                            <td>${o.total}</td>
+                            <td>${o.date}</td>
+                            <td>${o.payment}</td>
+                            <td>${o.shipping}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            // Output
+            jQuery('#kiss-fast-results').html(html);
+        }
+        </script>
+
+        <?php
+
+        echo '</div>';
+    }
+    
 }
 
 add_action( 'admin_enqueue_scripts', function( $hook ) {
@@ -281,10 +473,12 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
             'kiss-woo-order-inject',
             'KISSCOS',
             array(
-                'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce'    => wp_create_nonce('kiss_woo_cos_search'),
+                'ajax_url'         => admin_url('admin-ajax.php'),
+                'nonce'            => wp_create_nonce('kiss_woo_cos_search'),
+                'admin_search_url' => admin_url('admin.php?page=kiss-woo-fast-search')
             )
         );
+
     }
 
 });
