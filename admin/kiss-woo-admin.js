@@ -147,4 +147,12 @@ jQuery(function ($) {
             $form.trigger('submit');
         }
     });
+
+    // Auto-search if coming from dashboard widget with 'q' parameter.
+    var urlParams = new URLSearchParams(window.location.search);
+    var prefilledQuery = urlParams.get('q');
+    if (prefilledQuery && prefilledQuery.trim().length >= 2) {
+        $input.val(prefilledQuery.trim());
+        $form.trigger('submit');
+    }
 });
