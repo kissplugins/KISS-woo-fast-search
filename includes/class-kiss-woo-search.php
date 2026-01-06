@@ -6,6 +6,53 @@ if ( ! defined( 'ABSPATH' ) ) {
 class KISS_Woo_COS_Search {
 
     /**
+     * Holds debug info from the most recent customer lookup-table search.
+     *
+     * @var array
+     */
+    protected $last_lookup_debug = array();
+
+    /**
+     * Whether debug logging is enabled.
+     *
+     * Default: enabled. Disable by defining `KISS_WOO_COS_DEBUG` as false.
+     *
+     * @return bool
+     */
+    protected function is_debug_enabled() {
+        if ( defined( 'KISS_WOO_COS_DEBUG' ) ) {
+            return (bool) KISS_WOO_COS_DEBUG;
+        }
+
+        return true;
+    }
+
+    /**
+     * Log debug information.
+     *
+     * @param string $message
+     * @param array  $context
+     *
+     * @return void
+     */
+    protected function debug_log( $message, $context = array() ) {
+        if ( ! $this->is_debug_enabled() ) {
+            return;
+        }
+
+        $line = '[KISS_WOO_COS] ' . (string) $message;
+        if ( ! empty( $context ) ) {
+            $encoded = wp_json_encode( $context );
+            if ( $encoded ) {
+                $line .= ' ' . $encoded;
+            }
+        }
+
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( $line );
+    }
+
+    /**
      * Find matching customers by email or name.
      *
      * @param string $term Search term.
@@ -13,37 +60,56 @@ class KISS_Woo_COS_Search {
      * @return array
      */
     public function search_customers( $term ) {
+        $t0 = microtime( true );
         $term = trim( $term );
 
-        $user_query_args = array(
-            'number'         => 20,
-            'fields'         => 'all_with_meta',
-            'orderby'        => 'registered',
-            'order'          => 'DESC',
-            'search'         => '*' . esc_attr( $term ) . '*',
-            'search_columns' => array( 'user_email', 'user_login', 'display_name' ),
-            'meta_query'     => array(
-                'relation' => 'OR',
-                array(
-                    'key'     => 'billing_email',
-                    'value'   => $term,
-                    'compare' => 'LIKE',
-                ),
-                array(
-                    'key'     => 'billing_first_name',
-                    'value'   => $term,
-                    'compare' => 'LIKE',
-                ),
-                array(
-                    'key'     => 'billing_last_name',
-                    'value'   => $term,
-                    'compare' => 'LIKE',
-                ),
-            ),
-        );
+        // Prefer WooCommerce lookup table to avoid wp_usermeta OR+LIKE scans.
+        $user_ids  = $this->search_user_ids_via_customer_lookup( $term, 20 );
+        $used_path = ! empty( $user_ids ) ? 'wc_customer_lookup' : 'fallback_wp_user_query';
 
-        $user_query = new WP_User_Query( $user_query_args );
-        $users      = $user_query->get_results();
+        if ( ! empty( $user_ids ) ) {
+            $users = get_users(
+                array(
+                    'include'        => $user_ids,
+                    'orderby'        => 'include',
+                    'fields'         => 'all_with_meta',
+                    'number'         => count( $user_ids ),
+                    'count_total'    => false,
+                    'update_meta_cache' => true,
+                )
+            );
+        } else {
+            // Fallback to WP_User_Query (less efficient on large datasets).
+            $user_query_args = array(
+                'number'         => 20,
+                'fields'         => 'all_with_meta',
+                'orderby'        => 'registered',
+                'order'          => 'DESC',
+                'search'         => '*' . esc_attr( $term ) . '*',
+                'search_columns' => array( 'user_email', 'user_login', 'display_name' ),
+                'meta_query'     => array(
+                    'relation' => 'OR',
+                    array(
+                        'key'     => 'billing_email',
+                        'value'   => $term,
+                        'compare' => 'LIKE',
+                    ),
+                    array(
+                        'key'     => 'billing_first_name',
+                        'value'   => $term,
+                        'compare' => 'LIKE',
+                    ),
+                    array(
+                        'key'     => 'billing_last_name',
+                        'value'   => $term,
+                        'compare' => 'LIKE',
+                    ),
+                ),
+            );
+
+            $user_query = new WP_User_Query( $user_query_args );
+            $users      = $user_query->get_results();
+        }
 
         $results = array();
 
@@ -88,7 +154,143 @@ class KISS_Woo_COS_Search {
             }
         }
 
+        $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
+
+        $this->debug_log(
+            'search_customers',
+            array(
+                'term'          => $term,
+                'path'          => $used_path,
+                'lookup_debug'  => $this->last_lookup_debug,
+                'results_users' => is_array( $users ) ? count( $users ) : 0,
+                'elapsed_ms'    => round( $elapsed_ms, 2 ),
+            )
+        );
+
         return $results;
+    }
+
+    /**
+     * Attempt to find matching WP user IDs using WooCommerce's customer lookup table.
+     *
+     * This avoids expensive OR+LIKE scans across wp_usermeta.
+     *
+     * Notes:
+     * - Uses prefix matching where possible to allow indexes to help.
+     * - Only returns user_id > 0 (registered users). Guest orders are handled elsewhere.
+     * - Returns an empty array if the lookup table is unavailable.
+     *
+     * @param string $term
+     * @param int    $limit
+     *
+     * @return int[]
+     */
+    protected function search_user_ids_via_customer_lookup( $term, $limit = 20 ) {
+        global $wpdb;
+
+        $this->last_lookup_debug = array(
+            'enabled' => true,
+            'mode'    => null,
+            'table'   => $wpdb->prefix . 'wc_customer_lookup',
+            'hit'     => false,
+            'count'   => 0,
+        );
+
+        $term  = trim( (string) $term );
+        $limit = (int) $limit;
+
+        if ( '' === $term || $limit <= 0 ) {
+            $this->last_lookup_debug['enabled'] = false;
+            return array();
+        }
+
+        // Ensure lookup table exists.
+        $table = $wpdb->prefix . 'wc_customer_lookup';
+        $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        if ( $exists !== $table ) {
+            $this->last_lookup_debug['enabled'] = false;
+            return array();
+        }
+
+        $like_term = $wpdb->esc_like( $term );
+        $prefix    = $like_term . '%';
+
+        // Detect "first last" input.
+        $parts = preg_split( '/\s+/', $term );
+        $parts = array_values( array_filter( array_map( 'trim', (array) $parts ) ) );
+
+        // Heuristic: treat anything containing '@' as email-ish.
+        $is_emailish = false !== strpos( $term, '@' );
+
+        if ( count( $parts ) >= 2 ) {
+            $this->last_lookup_debug['mode'] = 'name_pair_prefix';
+            $a = $wpdb->esc_like( $parts[0] ) . '%';
+            $b = $wpdb->esc_like( $parts[1] ) . '%';
+
+            $sql = $wpdb->prepare(
+                "SELECT user_id
+                 FROM {$table}
+                 WHERE user_id > 0
+                 AND ((first_name LIKE %s AND last_name LIKE %s) OR (first_name LIKE %s AND last_name LIKE %s))
+                 ORDER BY date_registered DESC
+                 LIMIT %d",
+                $a,
+                $b,
+                $b,
+                $a,
+                $limit
+            );
+
+            $ids = $wpdb->get_col( $sql );
+        } else {
+            $this->last_lookup_debug['mode'] = 'prefix_multi_column';
+            // Prefix search across indexed-ish columns.
+            $sql = $wpdb->prepare(
+                "SELECT user_id
+                 FROM {$table}
+                 WHERE user_id > 0
+                 AND (email LIKE %s OR first_name LIKE %s OR last_name LIKE %s OR username LIKE %s)
+                 ORDER BY date_registered DESC
+                 LIMIT %d",
+                $prefix,
+                $prefix,
+                $prefix,
+                $prefix,
+                $limit
+            );
+
+            $ids = $wpdb->get_col( $sql );
+
+            // If this looks like an email fragment and prefix found nothing, fall back to contains on email.
+            // This is still much cheaper than wp_usermeta joins in practice.
+            if ( empty( $ids ) && $is_emailish && strlen( $term ) >= 3 ) {
+                $this->last_lookup_debug['mode'] = 'contains_email_fallback';
+                $contains = '%' . $like_term . '%';
+                $sql2 = $wpdb->prepare(
+                    "SELECT user_id
+                     FROM {$table}
+                     WHERE user_id > 0
+                     AND email LIKE %s
+                     ORDER BY date_registered DESC
+                     LIMIT %d",
+                    $contains,
+                    $limit
+                );
+                $ids = $wpdb->get_col( $sql2 );
+            }
+        }
+
+        $ids = array_values( array_filter( array_map( 'intval', (array) $ids ) ) );
+        if ( empty( $ids ) ) {
+            $this->last_lookup_debug['hit']   = false;
+            $this->last_lookup_debug['count'] = 0;
+            return array();
+        }
+
+        $this->last_lookup_debug['hit']   = true;
+        $this->last_lookup_debug['count'] = count( $ids );
+
+        return $ids;
     }
 
     /**
