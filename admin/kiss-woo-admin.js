@@ -4,6 +4,15 @@ jQuery(function ($) {
     var $status = $('#kiss-cos-search-status');
     var $results = $('#kiss-cos-results');
 
+    function getQueryParam(name) {
+        try {
+            var params = new URLSearchParams(window.location.search || '');
+            return params.get(name);
+        } catch (e) {
+            return null;
+        }
+    }
+
     /**
      * Escape HTML special characters to prevent XSS attacks.
      *
@@ -147,4 +156,11 @@ jQuery(function ($) {
             $form.trigger('submit');
         }
     });
+
+    // If we landed here from the floating toolbar, auto-run the search.
+    var initialQ = (getQueryParam('q') || '').trim();
+    if (initialQ.length >= 2) {
+        $input.val(initialQ);
+        $form.trigger('submit');
+    }
 });

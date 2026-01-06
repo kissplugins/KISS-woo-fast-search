@@ -65,6 +65,10 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         // Include files.
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
+        // Floating toolbar integration (admin only).
+        if ( is_admin() ) {
+            require_once KISS_WOO_COS_PATH . 'toolbar.php';
+        }
 
         // Init admin page.
         KISS_Woo_COS_Admin_Page::instance();
