@@ -51,6 +51,8 @@ class KISS_Woo_Customer_Order_Search_Plugin {
     private function __construct() {
         // Check WooCommerce.
         add_action( 'plugins_loaded', array( $this, 'maybe_bootstrap' ) );
+        // Add settings link to plugins page.
+        add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), array( $this, 'add_settings_link' ) );
     }
 
     /**
@@ -90,6 +92,18 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         echo '<div class="notice notice-error"><p>';
         esc_html_e( 'KISS - Faster Customer & Order Search requires WooCommerce to be installed and active.', 'kiss-woo-customer-order-search' );
         echo '</p></div>';
+    }
+
+    /**
+     * Add settings link to plugin action links.
+     *
+     * @param array $links
+     * @return array
+     */
+    public function add_settings_link( $links ) {
+        $settings_link = '<a href="' . admin_url( 'admin.php?page=kiss-woo-cos-settings' ) . '">' . __( 'Settings', 'kiss-woo-customer-order-search' ) . '</a>';
+        array_unshift( $links, $settings_link );
+        return $links;
     }
 
     /**

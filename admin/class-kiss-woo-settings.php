@@ -47,7 +47,7 @@ class KISS_Woo_COS_Settings {
         add_submenu_page(
             'woocommerce',
             __( 'KISS Search Settings', 'kiss-woo-customer-order-search' ),
-            __( 'KISS Settings', 'kiss-woo-customer-order-search' ),
+            __( 'KISS Search Settings', 'kiss-woo-customer-order-search' ),
             'manage_woocommerce',
             'kiss-woo-cos-settings',
             array( $this, 'render_settings_page' )

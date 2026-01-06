@@ -7,16 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Performance: Stop loading full usermeta (`all_with_meta`) during search results; fetch only core user fields and batch-load just `billing_first_name`, `billing_last_name`, and `billing_email`.
-
-### Added
-- Maintenance: Add a warning tripwire if `get_recent_orders_for_customer()` is called multiple times (helps catch accidental N+1 reintroduction).
-
 ## [1.0.2] - 2026-01-06
 
 ### Added
-- Settings page under WooCommerce menu with option to globally hide the floating search toolbar.
+- Settings page under **WooCommerce → KISS Search Settings** with option to globally hide the floating search toolbar.
+- Settings link in the plugins listing page for quick access.
 - Global setting to hide the 2nd admin search toolbar for all users.
 
 ## [1.0.1] - 2025-XX-XX
