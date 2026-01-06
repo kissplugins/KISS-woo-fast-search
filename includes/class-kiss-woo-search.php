@@ -48,8 +48,18 @@ class KISS_Woo_COS_Search {
         $results = array();
 
         if ( ! empty( $users ) ) {
+            $user_ids = array_map( 'intval', wp_list_pluck( $users, 'ID' ) );
+            $user_ids = array_values( array_filter( $user_ids ) );
+
+            if ( ! empty( $user_ids ) && function_exists( 'update_meta_cache' ) ) {
+                update_meta_cache( 'user', $user_ids );
+            }
+
+            $order_counts = $this->get_order_counts_for_customers( $user_ids );
+            $recent_orders = $this->get_recent_orders_for_customers( $user_ids );
+
             foreach ( $users as $user ) {
-                $user_id   = $user->ID;
+                $user_id   = (int) $user->ID;
                 $first     = get_user_meta( $user_id, 'billing_first_name', true );
                 $last      = get_user_meta( $user_id, 'billing_last_name', true );
                 $full_name = trim( $first . ' ' . $last );
@@ -61,7 +71,8 @@ class KISS_Woo_COS_Search {
                 $billing_email = get_user_meta( $user_id, 'billing_email', true );
                 $primary_email = $user->user_email ? $user->user_email : $billing_email;
 
-                $order_count = $this->get_order_count_for_customer( $user_id );
+                $order_count = isset( $order_counts[ $user_id ] ) ? (int) $order_counts[ $user_id ] : 0;
+                $orders_list = isset( $recent_orders[ $user_id ] ) ? $recent_orders[ $user_id ] : array();
 
                 $results[] = array(
                     'id'           => $user_id,
@@ -70,14 +81,50 @@ class KISS_Woo_COS_Search {
                     'billing_email'=> esc_html( $billing_email ),
                     'registered'   => $user->user_registered,
                     'registered_h' => esc_html( $this->format_date_human( $user->user_registered ) ),
-                    'orders'       => (int) $order_count,
+                    'orders'       => $order_count,
                     'edit_url'     => esc_url( get_edit_user_link( $user_id ) ),
-                    'orders_list'  => $this->get_recent_orders_for_customer( $user_id, $primary_email ),
+                    'orders_list'  => $orders_list,
                 );
             }
         }
 
         return $results;
+    }
+
+    /**
+     * Get total orders for multiple customer IDs using a single query where possible.
+     *
+     * @param array $user_ids Customer IDs.
+     *
+     * @return array Map of user_id => order_count.
+     */
+    protected function get_order_counts_for_customers( $user_ids ) {
+        if ( empty( $user_ids ) || ! is_array( $user_ids ) ) {
+            return array();
+        }
+
+        $user_ids = array_values( array_filter( array_map( 'intval', $user_ids ) ) );
+
+        if ( empty( $user_ids ) ) {
+            return array();
+        }
+
+        $order_counts = array_fill_keys( $user_ids, 0 );
+
+        try {
+            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+                $counts = $this->get_order_counts_hpos( $user_ids );
+                return $counts + $order_counts;
+            }
+        } catch ( Exception $e ) {
+            // Fall back to legacy logic on failure.
+        }
+
+        $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
+
+        return $legacy_counts + $order_counts;
     }
 
     /**
@@ -135,6 +182,52 @@ class KISS_Woo_COS_Search {
     }
 
     /**
+     * Batch order counts for HPOS.
+     *
+     * @param array $user_ids Customer IDs.
+     *
+     * @return array
+     */
+    protected function get_order_counts_hpos( $user_ids ) {
+        global $wpdb;
+
+        $user_ids = array_values( array_filter( array_map( 'intval', $user_ids ) ) );
+
+        if ( empty( $user_ids ) ) {
+            return array();
+        }
+
+        $statuses = array_keys( wc_get_order_statuses() );
+        if ( empty( $statuses ) ) {
+            return array();
+        }
+
+        $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+        $user_placeholders   = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
+
+        $orders_table = $wpdb->prefix . 'wc_orders';
+
+        $query = $wpdb->prepare(
+            "SELECT customer_id, COUNT(*) as total FROM {$orders_table}
+             WHERE customer_id IN ({$user_placeholders})
+             AND status IN ({$status_placeholders})
+             GROUP BY customer_id",
+            array_merge( $user_ids, $statuses )
+        );
+
+        $rows = $wpdb->get_results( $query );
+
+        $counts = array();
+        if ( ! empty( $rows ) ) {
+            foreach ( $rows as $row ) {
+                $counts[ (int) $row->customer_id ] = (int) $row->total;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
      * Get order count using legacy posts table (fallback for older WooCommerce).
      * Uses direct SQL COUNT query for performance.
      *
@@ -175,6 +268,54 @@ class KISS_Woo_COS_Search {
     }
 
     /**
+     * Batch order counts using legacy posts table.
+     *
+     * @param array $user_ids Customer IDs.
+     *
+     * @return array
+     */
+    protected function get_order_counts_legacy_batch( $user_ids ) {
+        global $wpdb;
+
+        $user_ids = array_values( array_filter( array_map( 'intval', $user_ids ) ) );
+
+        if ( empty( $user_ids ) ) {
+            return array();
+        }
+
+        $statuses = array_keys( wc_get_order_statuses() );
+        if ( empty( $statuses ) ) {
+            return array();
+        }
+
+        $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+        $user_placeholders   = implode( ',', array_fill( 0, count( $user_ids ), '%s' ) );
+
+        $query = $wpdb->prepare(
+            "SELECT pm.meta_value AS customer_id, COUNT(DISTINCT p.ID) as total
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+             WHERE p.post_type = 'shop_order'
+             AND p.post_status IN ({$status_placeholders})
+             AND pm.meta_key = '_customer_user'
+             AND pm.meta_value IN ({$user_placeholders})
+             GROUP BY pm.meta_value",
+            array_merge( $statuses, array_map( 'strval', $user_ids ) )
+        );
+
+        $rows = $wpdb->get_results( $query );
+
+        $counts = array();
+        if ( ! empty( $rows ) ) {
+            foreach ( $rows as $row ) {
+                $counts[ (int) $row->customer_id ] = (int) $row->total;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
      * Get recent orders for a given customer ID + email.
      * Returns simplified data suitable for JSON.
      *
@@ -201,6 +342,11 @@ class KISS_Woo_COS_Search {
 
         $orders = wc_get_orders( $args );
 
+        if ( empty( $orders ) && empty( $user_id ) && is_email( $email ) ) {
+            $args['customer'] = $email;
+            $orders           = wc_get_orders( $args );
+        }
+
         $results = array();
 
         if ( ! empty( $orders ) ) {
@@ -208,6 +354,61 @@ class KISS_Woo_COS_Search {
                 /** @var WC_Order $order */
                 $results[] = $this->format_order_for_output( $order );
             }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Fetch recent orders for multiple customers in one query.
+     *
+     * @param array $user_ids Customer IDs.
+     *
+     * @return array Map of user_id => array orders.
+     */
+    protected function get_recent_orders_for_customers( $user_ids ) {
+        if ( empty( $user_ids ) || ! function_exists( 'wc_get_orders' ) ) {
+            return array();
+        }
+
+        $user_ids = array_values( array_filter( array_map( 'intval', $user_ids ) ) );
+
+        if ( empty( $user_ids ) ) {
+            return array();
+        }
+
+        $results = array();
+        foreach ( $user_ids as $user_id ) {
+            $results[ $user_id ] = array();
+        }
+
+        $orders = wc_get_orders(
+            array(
+                'limit'   => count( $user_ids ) * 10,
+                'orderby' => 'date',
+                'order'   => 'DESC',
+                'status'  => array_keys( wc_get_order_statuses() ),
+                'customer'=> $user_ids,
+            )
+        );
+
+        if ( empty( $orders ) ) {
+            return $results;
+        }
+
+        foreach ( $orders as $order ) {
+            /** @var WC_Order $order */
+            $customer_id = (int) $order->get_customer_id();
+
+            if ( empty( $customer_id ) || ! isset( $results[ $customer_id ] ) ) {
+                continue;
+            }
+
+            if ( count( $results[ $customer_id ] ) >= 10 ) {
+                continue;
+            }
+
+            $results[ $customer_id ][] = $this->format_order_for_output( $order );
         }
 
         return $results;

@@ -1,38 +1,47 @@
 <?php
 /**
- * Plugin Name: Custom Floating Search Bar
- * Description: Adds a secondary floating toolbar with search functionality
- * Version: 1.2.0
- * Text Domain: floating-search
+ * Floating admin toolbar for the KISS Customer & Order Search plugin.
+ *
+ * This file is bundled and loaded by the main plugin bootstrap.
  */
-
-namespace YourNamespace\FloatingSearch;
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-class FloatingSearchBar {
+if ( ! class_exists( 'KISS_Woo_COS_Floating_Search_Bar' ) ) {
+
+class KISS_Woo_COS_Floating_Search_Bar {
     
-    private const NONCE_ACTION = 'floating_search_action';
-    private const SCRIPT_HANDLE = 'floating-search-bar';
+    private const SCRIPT_HANDLE = 'kiss-woo-cos-floating-toolbar';
     
     public function __construct() {
-        add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
-        add_action('admin_footer', [$this, 'render_toolbar']);
+        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+        add_action( 'admin_head', array( $this, 'output_css' ) );
+        add_action( 'admin_footer', array( $this, 'render_toolbar' ) );
+        add_action( 'admin_footer', array( $this, 'output_js' ), 20 );
     }
     
     public function enqueue_assets(): void {
-        add_action('admin_head', [$this, 'output_css']);
-        add_action('admin_footer', [$this, 'output_js'], 20);
-        
-        wp_register_script(self::SCRIPT_HANDLE, false, ['jquery'], '1.2.0', true);
-        wp_enqueue_script(self::SCRIPT_HANDLE);
-        
-        wp_localize_script(self::SCRIPT_HANDLE, 'floatingSearchBar', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce'   => wp_create_nonce(self::NONCE_ACTION),
-        ]);
+        if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
+        $version = defined( 'KISS_WOO_COS_VERSION' ) ? KISS_WOO_COS_VERSION : '1.0.0';
+
+        // Register a "virtual" script handle so we can localize settings and print inline JS.
+        // Using `false` for src is a common WP pattern for inline-only scripts.
+        wp_register_script( self::SCRIPT_HANDLE, false, array( 'jquery' ), $version, true );
+        wp_enqueue_script( self::SCRIPT_HANDLE );
+
+        wp_localize_script(
+            self::SCRIPT_HANDLE,
+            'floatingSearchBar',
+            [
+                'searchUrl' => admin_url( 'admin.php?page=kiss-woo-customer-order-search' ),
+                'minChars'  => 2,
+            ]
+        );
     }
     
     public function output_css(): void {
@@ -180,17 +189,19 @@ class FloatingSearchBar {
                     input.focus();
                     return;
                 }
-                
-                const event = new CustomEvent('floatingSearch:submit', {
-                    detail: {
-                        term: searchTerm,
-                        nonce: floatingSearchBar.nonce,
-                        ajaxUrl: floatingSearchBar.ajaxUrl
-                    }
-                });
-                document.dispatchEvent(event);
-                
-                console.log('FloatingSearch: Ready for integration', searchTerm);
+
+                if (floatingSearchBar && floatingSearchBar.minChars && searchTerm.length < floatingSearchBar.minChars) {
+                    input.focus();
+                    return;
+                }
+
+                // Redirect to the KISS search results page with the query param.
+                const baseUrl = (floatingSearchBar && floatingSearchBar.searchUrl) ? floatingSearchBar.searchUrl : '';
+                if (!baseUrl) {
+                    return;
+                }
+
+                window.location.href = baseUrl + '&q=' + encodeURIComponent(searchTerm);
             }
             
             submitBtn.addEventListener('click', handleSearch);
@@ -208,11 +219,14 @@ class FloatingSearchBar {
     }
     
     public function render_toolbar(): void {
+        if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
         ?>
         <div id="floating-search-toolbar">
             <div class="floating-search-toolbar__section">
                 <span class="floating-search-toolbar__label">
-                    <?php esc_html_e('Secondary Toolbar', 'floating-search'); ?>
+                    <?php esc_html_e( 'KISS Search', 'kiss-woo-customer-order-search' ); ?>
                 </span>
             </div>
             
@@ -221,7 +235,7 @@ class FloatingSearchBar {
                     type="text" 
                     id="floating-search-input" 
                     class="floating-search-input"
-                    placeholder="<?php esc_attr_e('Search...', 'floating-search'); ?>"
+                    placeholder="<?php esc_attr_e( 'Search email or name…', 'kiss-woo-customer-order-search' ); ?>"
                     autocomplete="off"
                 />
                 <button 
@@ -229,16 +243,18 @@ class FloatingSearchBar {
                     id="floating-search-submit" 
                     class="floating-search-submit"
                 >
-                    <?php esc_html_e('Search', 'floating-search'); ?>
+                    <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
                 </button>
             </div>
         </div>
         <?php
     }
-    
-    public static function get_nonce_action(): string {
-        return self::NONCE_ACTION;
-    }
 }
 
-new FloatingSearchBar();
+}
+
+// Bootstrap immediately when this file is included by the main plugin.
+// This file is loaded during `plugins_loaded`, so hooking `plugins_loaded` here would be too late.
+if ( is_admin() && current_user_can( 'manage_woocommerce' ) ) {
+    new KISS_Woo_COS_Floating_Search_Bar();
+}
