@@ -578,12 +578,32 @@ class KISS_Woo_COS_Search {
      * Get recent orders for a given customer ID + email.
      * Returns simplified data suitable for JSON.
      *
+     * IMPORTANT: Avoid calling this in a loop for many customers.
+     * Doing so reintroduces an N+1 query pattern (one `wc_get_orders()` call per customer).
+     * Prefer `get_recent_orders_for_customers()` which batches the fetch.
+     *
+     * @deprecated Internal helper; use `get_recent_orders_for_customers()` for multi-customer searches.
+     *
      * @param int    $user_id
      * @param string $email
      *
      * @return array
      */
     protected function get_recent_orders_for_customer( $user_id, $email ) {
+        // Tripwire: if this gets called multiple times in a single request, it likely indicates
+        // an accidental N+1 reintroduction. Log a warning (debug default-on) to make it obvious.
+        static $call_count = 0;
+        $call_count++;
+        if ( $call_count === 2 ) {
+            $this->debug_log(
+                'warning_potential_n_plus_one',
+                array(
+                    'hint'  => 'get_recent_orders_for_customer() called multiple times; prefer get_recent_orders_for_customers().',
+                    'count' => $call_count,
+                )
+            );
+        }
+
         if ( ! function_exists( 'wc_get_orders' ) ) {
             return array();
         }
