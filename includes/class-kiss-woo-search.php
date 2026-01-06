@@ -83,7 +83,11 @@ class KISS_Woo_COS_Search {
             );
             $users = $user_query->get_results();
         } else {
-            // Fallback to WP_User_Query (less efficient on large datasets).
+            // Fallback when wc_customer_lookup is unavailable.
+            // IMPORTANT: Avoid meta_query on wp_usermeta - it's O(n) on large sites.
+            // Only search wp_users table columns (indexed) for acceptable performance.
+            $is_email_search = ( false !== strpos( $term, '@' ) );
+
             $user_query_args = array(
                 'number'                 => 20,
                 'fields'                 => $user_fields,
@@ -92,25 +96,20 @@ class KISS_Woo_COS_Search {
                 'search'                 => '*' . esc_attr( $term ) . '*',
                 'search_columns'         => array( 'user_email', 'user_login', 'display_name' ),
                 'update_user_meta_cache' => false,
-                'meta_query'             => array(
-                    'relation' => 'OR',
+            );
+
+            // Only add billing_email meta search for email-like terms (much smaller result set).
+            if ( $is_email_search ) {
+                $user_query_args['meta_query'] = array(
                     array(
                         'key'     => 'billing_email',
                         'value'   => $term,
                         'compare' => 'LIKE',
                     ),
-                    array(
-                        'key'     => 'billing_first_name',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                    array(
-                        'key'     => 'billing_last_name',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                ),
-            );
+                );
+            }
+            // Name searches without wc_customer_lookup: wp_users.display_name is the only fast option.
+            // Searching wp_usermeta for billing_first_name/last_name is too slow on large sites.
 
             $user_query = new WP_User_Query( $user_query_args );
             $users      = $user_query->get_results();
@@ -217,6 +216,8 @@ class KISS_Woo_COS_Search {
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         if ( $exists !== $table ) {
             $this->last_lookup_debug['enabled'] = false;
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
             return array();
         }
 
@@ -249,7 +250,13 @@ class KISS_Woo_COS_Search {
                 $limit
             );
 
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+
             $ids = $wpdb->get_col( $sql );
+
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) );
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
@@ -370,6 +377,9 @@ class KISS_Woo_COS_Search {
 
         $order_counts = array_fill_keys( $user_ids, 0 );
 
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+
         try {
             if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
@@ -382,6 +392,9 @@ class KISS_Woo_COS_Search {
         }
 
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
+
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_order_counts DONE | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         return $legacy_counts + $order_counts;
     }
@@ -663,6 +676,9 @@ class KISS_Woo_COS_Search {
             $results[ $user_id ] = array();
         }
 
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
         // Instead, fetch matching order IDs with a direct legacy SQL query (IN list),
@@ -695,6 +711,10 @@ class KISS_Woo_COS_Search {
         );
 
         $rows = $wpdb->get_results( $sql );
+
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+
         if ( empty( $rows ) ) {
             return $results;
         }
@@ -726,6 +746,9 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] wc_get_orders START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+
         // Hydrate orders in one go.
         $orders = wc_get_orders(
             array(
@@ -734,6 +757,9 @@ class KISS_Woo_COS_Search {
                 'orderby' => 'include',
             )
         );
+
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] wc_get_orders DONE - orders: ' . count( $orders ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         if ( empty( $orders ) ) {
             return $results;
