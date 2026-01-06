@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.0.1' );
+    define( 'KISS_WOO_COS_VERSION', '1.1.0' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -65,12 +65,44 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         // Include files.
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
+        require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-floating-toolbar.php';
 
         // Init admin page.
         KISS_Woo_COS_Admin_Page::instance();
 
+        // Init floating toolbar.
+        KISS_Woo_COS_Floating_Toolbar::instance();
+
         // Register AJAX handler.
         add_action( 'wp_ajax_kiss_woo_customer_search', array( $this, 'handle_ajax_search' ) );
+
+        // Enqueue global admin scripts for floating toolbar.
+        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_global_assets' ) );
+    }
+
+    /**
+     * Enqueue global admin assets for floating toolbar.
+     *
+     * @param string $hook Current admin page hook.
+     */
+    public function enqueue_global_assets( $hook ) {
+        // Only for users with WooCommerce access.
+        if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+
+        // Add KISSCOS object for AJAX calls (if not already added by admin page).
+        wp_register_script( 'kiss-woo-cos-global', false, array( 'jquery' ), KISS_WOO_COS_VERSION, true );
+        wp_enqueue_script( 'kiss-woo-cos-global' );
+
+        wp_localize_script(
+            'kiss-woo-cos-global',
+            'KISSCOS',
+            array(
+                'ajax_url' => admin_url( 'admin-ajax.php' ),
+                'nonce'    => wp_create_nonce( 'kiss_woo_cos_search' ),
+            )
+        );
     }
 
     /**
