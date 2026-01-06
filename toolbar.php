@@ -12,18 +12,35 @@ if (!defined('ABSPATH')) {
 if ( ! class_exists( 'KISS_Woo_COS_Floating_Search_Bar' ) ) {
 
 class KISS_Woo_COS_Floating_Search_Bar {
-    
+
     private const SCRIPT_HANDLE = 'kiss-woo-cos-floating-toolbar';
-    
+
     public function __construct() {
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_head', array( $this, 'output_css' ) );
         add_action( 'admin_footer', array( $this, 'render_toolbar' ) );
         add_action( 'admin_footer', array( $this, 'output_js' ), 20 );
     }
+
+    /**
+     * Check if toolbar is globally hidden via settings.
+     *
+     * @return bool
+     */
+    private function is_toolbar_hidden() {
+        if ( ! class_exists( 'KISS_Woo_COS_Settings' ) ) {
+            return false;
+        }
+        return KISS_Woo_COS_Settings::is_toolbar_hidden();
+    }
     
     public function enqueue_assets(): void {
         if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
+        // Check if toolbar is globally hidden via settings.
+        if ( $this->is_toolbar_hidden() ) {
             return;
         }
 
@@ -45,6 +62,10 @@ class KISS_Woo_COS_Floating_Search_Bar {
     }
     
     public function output_css(): void {
+        // Check if toolbar is globally hidden via settings.
+        if ( $this->is_toolbar_hidden() ) {
+            return;
+        }
         ?>
         <style>
             #floating-search-toolbar {
@@ -167,15 +188,19 @@ class KISS_Woo_COS_Floating_Search_Bar {
     }
     
     public function output_js(): void {
+        // Check if toolbar is globally hidden via settings.
+        if ( $this->is_toolbar_hidden() ) {
+            return;
+        }
         ?>
         <script>
         (function($) {
             'use strict';
-            
+
             const toolbar = document.getElementById('floating-search-toolbar');
             const input = document.getElementById('floating-search-input');
             const submitBtn = document.getElementById('floating-search-submit');
-            
+
             if (!toolbar || !input || !submitBtn) {
                 return;
             }
@@ -220,6 +245,11 @@ class KISS_Woo_COS_Floating_Search_Bar {
     
     public function render_toolbar(): void {
         if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
+        // Check if toolbar is globally hidden via settings.
+        if ( $this->is_toolbar_hidden() ) {
             return;
         }
         ?>

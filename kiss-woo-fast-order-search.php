@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.0.1' );
+    define( 'KISS_WOO_COS_VERSION', '1.0.2' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -65,13 +65,15 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         // Include files.
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
+        require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-settings.php';
         // Floating toolbar integration (admin only).
         if ( is_admin() ) {
             require_once KISS_WOO_COS_PATH . 'toolbar.php';
         }
 
-        // Init admin page.
+        // Init admin page and settings.
         KISS_Woo_COS_Admin_Page::instance();
+        KISS_Woo_COS_Settings::instance();
 
         // Register AJAX handler.
         add_action( 'wp_ajax_kiss_woo_customer_search', array( $this, 'handle_ajax_search' ) );

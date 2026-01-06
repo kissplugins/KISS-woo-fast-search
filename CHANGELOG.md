@@ -1,11 +1,25 @@
 # Changelog
 
-All notable changes to this plugin will be documented in this file.
+All notable changes to this project will be documented in this file.
 
-## Unreleased
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
 - Performance: Stop loading full usermeta (`all_with_meta`) during search results; fetch only core user fields and batch-load just `billing_first_name`, `billing_last_name`, and `billing_email`.
+
+### Added
 - Maintenance: Add a warning tripwire if `get_recent_orders_for_customer()` is called multiple times (helps catch accidental N+1 reintroduction).
+
+## [1.0.2] - 2026-01-06
+
+### Added
+- Settings page under WooCommerce menu with option to globally hide the floating search toolbar.
+- Global setting to hide the 2nd admin search toolbar for all users.
+
+## [1.0.1] - 2025-XX-XX
 
 ### Changed
 - Optimized `search_customers()` to avoid N+1 queries by batching user meta loads and fetching order counts + recent orders in aggregated queries.
@@ -19,4 +33,19 @@ All notable changes to this plugin will be documented in this file.
 
 ### Fixed
 - Floating toolbar bootstrap timing so it reliably appears when the plugin is active.
+
+## [1.0.0] - 2025-XX-XX
+
+### Added
+- Initial release.
+- Admin submenu under WooCommerce with simple search form for customers and guest orders.
+- Capability and nonce checks on AJAX handler to prevent unauthorized access.
+- Server-side validation ensuring search terms are trimmed and at least two characters long.
+- Localized strings and AJAX configuration injected via `wp_localize_script`.
+- Benchmark page (`WooCommerce → KISS Benchmark`) for search performance comparisons.
+
+[Unreleased]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/yourusername/kiss-woo-fast-search/releases/tag/v1.0.0
 
