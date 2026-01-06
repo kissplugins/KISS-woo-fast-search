@@ -650,6 +650,8 @@ class KISS_Woo_COS_Search {
             return array();
         }
 
+        global $wpdb;
+
         $user_ids = array_values( array_filter( array_map( 'intval', $user_ids ) ) );
 
         if ( empty( $user_ids ) ) {
@@ -661,13 +663,75 @@ class KISS_Woo_COS_Search {
             $results[ $user_id ] = array();
         }
 
+        // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
+        // Some WooCommerce versions/docs only support a single customer ID/email.
+        // Instead, fetch matching order IDs with a direct legacy SQL query (IN list),
+        // then hydrate those orders in one go.
+
+        $statuses = array_keys( wc_get_order_statuses() );
+        if ( empty( $statuses ) ) {
+            return $results;
+        }
+
+        // Fetch more than the final per-customer cap because we apply the 10-per-customer cap in PHP.
+        // (Worst case: many recent orders belong to one customer.)
+        $candidate_limit = count( $user_ids ) * 10 * 5;
+
+        $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+        $user_placeholders   = implode( ',', array_fill( 0, count( $user_ids ), '%s' ) );
+
+        $sql = $wpdb->prepare(
+            "SELECT p.ID AS order_id, pm.meta_value AS customer_id
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} pm
+                ON p.ID = pm.post_id
+               AND pm.meta_key = '_customer_user'
+             WHERE p.post_type = 'shop_order'
+               AND p.post_status IN ({$status_placeholders})
+               AND pm.meta_value IN ({$user_placeholders})
+             ORDER BY p.post_date_gmt DESC
+             LIMIT %d",
+            array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
+        );
+
+        $rows = $wpdb->get_results( $sql );
+        if ( empty( $rows ) ) {
+            return $results;
+        }
+
+        $order_ids_by_customer = array();
+        foreach ( $user_ids as $user_id ) {
+            $order_ids_by_customer[ $user_id ] = array();
+        }
+
+        $all_order_ids = array();
+
+        foreach ( $rows as $row ) {
+            $order_id    = (int) $row->order_id;
+            $customer_id = (int) $row->customer_id;
+
+            if ( empty( $order_id ) || empty( $customer_id ) || ! isset( $order_ids_by_customer[ $customer_id ] ) ) {
+                continue;
+            }
+
+            if ( count( $order_ids_by_customer[ $customer_id ] ) >= 10 ) {
+                continue;
+            }
+
+            $order_ids_by_customer[ $customer_id ][] = $order_id;
+            $all_order_ids[]                          = $order_id;
+        }
+
+        if ( empty( $all_order_ids ) ) {
+            return $results;
+        }
+
+        // Hydrate orders in one go.
         $orders = wc_get_orders(
             array(
-                'limit'   => count( $user_ids ) * 10,
-                'orderby' => 'date',
-                'order'   => 'DESC',
-                'status'  => array_keys( wc_get_order_statuses() ),
-                'customer'=> $user_ids,
+                'include' => $all_order_ids,
+                'limit'   => -1,
+                'orderby' => 'include',
             )
         );
 
@@ -675,19 +739,23 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
+        $orders_by_id = array();
         foreach ( $orders as $order ) {
             /** @var WC_Order $order */
-            $customer_id = (int) $order->get_customer_id();
+            $orders_by_id[ (int) $order->get_id() ] = $order;
+        }
 
-            if ( empty( $customer_id ) || ! isset( $results[ $customer_id ] ) ) {
+        foreach ( $order_ids_by_customer as $customer_id => $order_ids ) {
+            if ( empty( $order_ids ) ) {
                 continue;
             }
 
-            if ( count( $results[ $customer_id ] ) >= 10 ) {
-                continue;
+            foreach ( $order_ids as $order_id ) {
+                if ( ! isset( $orders_by_id[ $order_id ] ) ) {
+                    continue;
+                }
+                $results[ $customer_id ][] = $this->format_order_for_output( $orders_by_id[ $order_id ] );
             }
-
-            $results[ $customer_id ][] = $this->format_order_for_output( $order );
         }
 
         return $results;
