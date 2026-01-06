@@ -67,27 +67,32 @@ class KISS_Woo_COS_Search {
         $user_ids  = $this->search_user_ids_via_customer_lookup( $term, 20 );
         $used_path = ! empty( $user_ids ) ? 'wc_customer_lookup' : 'fallback_wp_user_query';
 
+        // IMPORTANT: Avoid `fields => all_with_meta` (loads *all* usermeta). We only need a few keys.
+        $user_fields = array( 'ID', 'user_email', 'display_name', 'user_registered' );
+
         if ( ! empty( $user_ids ) ) {
-            $users = get_users(
+            $user_query = new WP_User_Query(
                 array(
-                    'include'        => $user_ids,
-                    'orderby'        => 'include',
-                    'fields'         => 'all_with_meta',
-                    'number'         => count( $user_ids ),
-                    'count_total'    => false,
-                    'update_meta_cache' => true,
+                    'include'               => $user_ids,
+                    'orderby'               => 'include',
+                    'fields'                => $user_fields,
+                    'number'                => count( $user_ids ),
+                    'count_total'           => false,
+                    'update_user_meta_cache'=> false,
                 )
             );
+            $users = $user_query->get_results();
         } else {
             // Fallback to WP_User_Query (less efficient on large datasets).
             $user_query_args = array(
-                'number'         => 20,
-                'fields'         => 'all_with_meta',
-                'orderby'        => 'registered',
-                'order'          => 'DESC',
-                'search'         => '*' . esc_attr( $term ) . '*',
-                'search_columns' => array( 'user_email', 'user_login', 'display_name' ),
-                'meta_query'     => array(
+                'number'                 => 20,
+                'fields'                 => $user_fields,
+                'orderby'                => 'registered',
+                'order'                  => 'DESC',
+                'search'                 => '*' . esc_attr( $term ) . '*',
+                'search_columns'         => array( 'user_email', 'user_login', 'display_name' ),
+                'update_user_meta_cache' => false,
+                'meta_query'             => array(
                     'relation' => 'OR',
                     array(
                         'key'     => 'billing_email',
@@ -117,39 +122,42 @@ class KISS_Woo_COS_Search {
             $user_ids = array_map( 'intval', wp_list_pluck( $users, 'ID' ) );
             $user_ids = array_values( array_filter( $user_ids ) );
 
-            if ( ! empty( $user_ids ) && function_exists( 'update_meta_cache' ) ) {
-                update_meta_cache( 'user', $user_ids );
-            }
+            // Batch-fetch only the billing meta keys we actually need.
+            $billing_meta = $this->get_user_meta_for_users( $user_ids, array( 'billing_first_name', 'billing_last_name', 'billing_email' ) );
 
-            $order_counts = $this->get_order_counts_for_customers( $user_ids );
+            $order_counts  = $this->get_order_counts_for_customers( $user_ids );
             $recent_orders = $this->get_recent_orders_for_customers( $user_ids );
 
             foreach ( $users as $user ) {
-                $user_id   = (int) $user->ID;
-                $first     = get_user_meta( $user_id, 'billing_first_name', true );
-                $last      = get_user_meta( $user_id, 'billing_last_name', true );
+                $user_id = (int) $user->ID;
+
+                $first = isset( $billing_meta[ $user_id ]['billing_first_name'] ) ? (string) $billing_meta[ $user_id ]['billing_first_name'] : '';
+                $last  = isset( $billing_meta[ $user_id ]['billing_last_name'] ) ? (string) $billing_meta[ $user_id ]['billing_last_name'] : '';
                 $full_name = trim( $first . ' ' . $last );
 
                 if ( '' === $full_name ) {
-                    $full_name = $user->display_name;
+                    $full_name = isset( $user->display_name ) ? (string) $user->display_name : '';
                 }
 
-                $billing_email = get_user_meta( $user_id, 'billing_email', true );
-                $primary_email = $user->user_email ? $user->user_email : $billing_email;
+                $billing_email = isset( $billing_meta[ $user_id ]['billing_email'] ) ? (string) $billing_meta[ $user_id ]['billing_email'] : '';
+                $user_email    = isset( $user->user_email ) ? (string) $user->user_email : '';
+                $primary_email = $user_email ? $user_email : $billing_email;
+
+                $registered    = isset( $user->user_registered ) ? (string) $user->user_registered : '';
 
                 $order_count = isset( $order_counts[ $user_id ] ) ? (int) $order_counts[ $user_id ] : 0;
                 $orders_list = isset( $recent_orders[ $user_id ] ) ? $recent_orders[ $user_id ] : array();
 
                 $results[] = array(
-                    'id'           => $user_id,
-                    'name'         => esc_html( $full_name ),
-                    'email'        => esc_html( $primary_email ),
-                    'billing_email'=> esc_html( $billing_email ),
-                    'registered'   => $user->user_registered,
-                    'registered_h' => esc_html( $this->format_date_human( $user->user_registered ) ),
-                    'orders'       => $order_count,
-                    'edit_url'     => esc_url( get_edit_user_link( $user_id ) ),
-                    'orders_list'  => $orders_list,
+                    'id'            => $user_id,
+                    'name'          => esc_html( $full_name ),
+                    'email'         => esc_html( $primary_email ),
+                    'billing_email' => esc_html( $billing_email ),
+                    'registered'    => $registered,
+                    'registered_h'  => esc_html( $this->format_date_human( $registered ) ),
+                    'orders'        => $order_count,
+                    'edit_url'      => esc_url( get_edit_user_link( $user_id ) ),
+                    'orders_list'   => $orders_list,
                 );
             }
         }
@@ -291,6 +299,55 @@ class KISS_Woo_COS_Search {
         $this->last_lookup_debug['count'] = count( $ids );
 
         return $ids;
+    }
+
+    /**
+     * Fetch selected meta keys for many users using a single query.
+     *
+     * @param int[]   $user_ids
+     * @param string[] $meta_keys
+     *
+     * @return array user_id => [ meta_key => meta_value ]
+     */
+    protected function get_user_meta_for_users( $user_ids, $meta_keys ) {
+        global $wpdb;
+
+        $user_ids = array_values( array_filter( array_map( 'intval', (array) $user_ids ) ) );
+        $meta_keys = array_values( array_filter( array_map( 'strval', (array) $meta_keys ) ) );
+
+        if ( empty( $user_ids ) || empty( $meta_keys ) ) {
+            return array();
+        }
+
+        $user_placeholders = implode( ',', array_fill( 0, count( $user_ids ), '%d' ) );
+        $key_placeholders  = implode( ',', array_fill( 0, count( $meta_keys ), '%s' ) );
+
+        $sql = $wpdb->prepare(
+            "SELECT user_id, meta_key, meta_value
+             FROM {$wpdb->usermeta}
+             WHERE user_id IN ({$user_placeholders})
+             AND meta_key IN ({$key_placeholders})",
+            array_merge( $user_ids, $meta_keys )
+        );
+
+        $rows = $wpdb->get_results( $sql );
+
+        $out = array();
+        foreach ( $user_ids as $user_id ) {
+            $out[ $user_id ] = array();
+        }
+
+        if ( ! empty( $rows ) ) {
+            foreach ( $rows as $row ) {
+                $uid = (int) $row->user_id;
+                if ( ! isset( $out[ $uid ] ) ) {
+                    $out[ $uid ] = array();
+                }
+                $out[ $uid ][ (string) $row->meta_key ] = maybe_unserialize( $row->meta_value );
+            }
+        }
+
+        return $out;
     }
 
     /**
