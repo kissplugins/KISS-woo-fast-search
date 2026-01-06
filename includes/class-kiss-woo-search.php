@@ -15,7 +15,7 @@ class KISS_Woo_COS_Search {
     /**
      * Whether debug logging is enabled.
      *
-     * Default: enabled. Disable by defining `KISS_WOO_COS_DEBUG` as false.
+     * Default: disabled. Enable by defining `KISS_WOO_COS_DEBUG` as true.
      *
      * @return bool
      */
@@ -24,7 +24,7 @@ class KISS_Woo_COS_Search {
             return (bool) KISS_WOO_COS_DEBUG;
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -818,6 +818,13 @@ class KISS_Woo_COS_Search {
         $payment      = $order->get_payment_method_title();
         $shipping     = $order->get_shipping_method();
 
+        // `esc_url()` is for HTML output contexts and will entity-encode `&` as `&#038;`.
+        // This payload is returned as JSON and inserted via JS; it must be a raw URL.
+        $edit_link = get_edit_post_link( $order_id, 'raw' );
+        if ( empty( $edit_link ) ) {
+            $edit_link = admin_url( 'post.php?post=' . (int) $order_id . '&action=edit' );
+        }
+
         return array(
             'id'            => (int) $order_id,
             'number'        => esc_html( $order->get_order_number() ),
@@ -827,7 +834,7 @@ class KISS_Woo_COS_Search {
             'date'          => esc_html( $date_created ? $date_created->date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) : '' ),
             'payment'       => esc_html( $payment ),
             'shipping'      => esc_html( $shipping ),
-            'view_url'      => esc_url( get_edit_post_link( $order_id ) ),
+            'view_url'      => esc_url_raw( $edit_link ),
             'billing_email' => esc_html( $order->get_billing_email() ),
         );
     }
