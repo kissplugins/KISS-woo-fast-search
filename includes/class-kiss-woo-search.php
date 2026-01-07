@@ -222,7 +222,6 @@ class KISS_Woo_COS_Search {
         }
 
         $like_term = $wpdb->esc_like( $term );
-        $prefix    = $like_term . '%';
 
         // Detect "first last" input.
         $parts = preg_split( '/\s+/', $term );
@@ -233,6 +232,8 @@ class KISS_Woo_COS_Search {
 
         if ( count( $parts ) >= 2 ) {
             $this->last_lookup_debug['mode'] = 'name_pair_prefix';
+            // Build LIKE patterns with wildcard, then pass through prepare().
+            // Use remove_placeholder_escape() to convert WP's hash placeholders back to %.
             $a = $wpdb->esc_like( $parts[0] ) . '%';
             $b = $wpdb->esc_like( $parts[1] ) . '%';
 
@@ -250,16 +251,24 @@ class KISS_Woo_COS_Search {
                 $limit
             );
 
+            // WordPress 6.x escapes % as hash placeholders; convert them back.
+            if ( method_exists( $wpdb, 'remove_placeholder_escape' ) ) {
+                $sql = $wpdb->remove_placeholder_escape( $sql );
+            }
+
             // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
             error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
 
+            $t_start = microtime( true );
             $ids = $wpdb->get_col( $sql );
+            $t_elapsed = round( ( microtime( true ) - $t_start ) * 1000, 2 );
 
             // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) );
+            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
+            $prefix_pattern = $like_term . '%';
             $sql = $wpdb->prepare(
                 "SELECT user_id
                  FROM {$table}
@@ -267,12 +276,17 @@ class KISS_Woo_COS_Search {
                  AND (email LIKE %s OR first_name LIKE %s OR last_name LIKE %s OR username LIKE %s)
                  ORDER BY date_registered DESC
                  LIMIT %d",
-                $prefix,
-                $prefix,
-                $prefix,
-                $prefix,
+                $prefix_pattern,
+                $prefix_pattern,
+                $prefix_pattern,
+                $prefix_pattern,
                 $limit
             );
+
+            // WordPress 6.x escapes % as hash placeholders; convert them back.
+            if ( method_exists( $wpdb, 'remove_placeholder_escape' ) ) {
+                $sql = $wpdb->remove_placeholder_escape( $sql );
+            }
 
             $ids = $wpdb->get_col( $sql );
 
@@ -280,7 +294,7 @@ class KISS_Woo_COS_Search {
             // This is still much cheaper than wp_usermeta joins in practice.
             if ( empty( $ids ) && $is_emailish && strlen( $term ) >= 3 ) {
                 $this->last_lookup_debug['mode'] = 'contains_email_fallback';
-                $contains = '%' . $like_term . '%';
+                $contains_pattern = '%' . $like_term . '%';
                 $sql2 = $wpdb->prepare(
                     "SELECT user_id
                      FROM {$table}
@@ -288,9 +302,14 @@ class KISS_Woo_COS_Search {
                      AND email LIKE %s
                      ORDER BY date_registered DESC
                      LIMIT %d",
-                    $contains,
+                    $contains_pattern,
                     $limit
                 );
+
+                if ( method_exists( $wpdb, 'remove_placeholder_escape' ) ) {
+                    $sql2 = $wpdb->remove_placeholder_escape( $sql2 );
+                }
+
                 $ids = $wpdb->get_col( $sql2 );
             }
         }
@@ -377,6 +396,8 @@ class KISS_Woo_COS_Search {
 
         $order_counts = array_fill_keys( $user_ids, 0 );
 
+        $t_counts_start = microtime( true );
+
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
         error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
@@ -385,6 +406,8 @@ class KISS_Woo_COS_Search {
                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
                 $counts = $this->get_order_counts_hpos( $user_ids );
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
                 return $counts + $order_counts;
             }
         } catch ( Exception $e ) {
@@ -394,7 +417,7 @@ class KISS_Woo_COS_Search {
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
 
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts DONE | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         return $legacy_counts + $order_counts;
     }
@@ -588,6 +611,315 @@ class KISS_Woo_COS_Search {
     }
 
     /**
+     * Fetch order data for multiple order IDs via direct SQL.
+     *
+     * IMPORTANT: This bypasses wc_get_orders() to avoid expensive hooks/plugins.
+     * Returns data in the same format as format_order_for_output().
+     *
+     * @param int[] $order_ids Order IDs to fetch.
+     *
+     * @return array Map of order_id => order data array.
+     */
+    protected function get_order_data_via_sql( $order_ids ) {
+        global $wpdb;
+
+        $order_ids = array_values( array_filter( array_map( 'intval', (array) $order_ids ) ) );
+
+        if ( empty( $order_ids ) ) {
+            return array();
+        }
+
+        $results = array();
+
+        // Check if HPOS is enabled.
+        $use_hpos = false;
+        try {
+            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+                $use_hpos = true;
+            }
+        } catch ( Exception $e ) {
+            $use_hpos = false;
+        }
+
+        if ( $use_hpos ) {
+            $results = $this->get_order_data_hpos( $order_ids );
+        } else {
+            $results = $this->get_order_data_legacy( $order_ids );
+        }
+
+        return $results;
+    }
+
+    /**
+     * Fetch order data via HPOS tables (wc_orders).
+     *
+     * @param int[] $order_ids Order IDs.
+     *
+     * @return array Map of order_id => order data.
+     */
+    protected function get_order_data_hpos( $order_ids ) {
+        global $wpdb;
+
+        $order_ids = array_values( array_filter( array_map( 'intval', (array) $order_ids ) ) );
+
+        if ( empty( $order_ids ) ) {
+            return array();
+        }
+
+        $results = array();
+
+        $orders_table = $wpdb->prefix . 'wc_orders';
+        $addresses_table = $wpdb->prefix . 'wc_order_addresses';
+
+        $placeholders = implode( ',', array_fill( 0, count( $order_ids ), '%d' ) );
+
+        // Main order data from wc_orders.
+        $sql = $wpdb->prepare(
+            "SELECT id, status, date_created_gmt, total_amount, currency, payment_method_title
+             FROM {$orders_table}
+             WHERE id IN ({$placeholders})",
+            $order_ids
+        );
+
+        $rows = $wpdb->get_results( $sql );
+
+        if ( empty( $rows ) ) {
+            return array();
+        }
+
+        $order_data = array();
+        foreach ( $rows as $row ) {
+            $order_data[ (int) $row->id ] = array(
+                'id'            => (int) $row->id,
+                'status'        => str_replace( 'wc-', '', $row->status ),
+                'date_gmt'      => $row->date_created_gmt,
+                'total'         => $row->total_amount,
+                'currency'      => $row->currency,
+                'payment'       => $row->payment_method_title,
+                'billing_email' => '',
+                'shipping'      => '',
+            );
+        }
+
+        // Get billing emails from wc_order_addresses.
+        $sql_addr = $wpdb->prepare(
+            "SELECT order_id, email
+             FROM {$addresses_table}
+             WHERE order_id IN ({$placeholders})
+             AND address_type = 'billing'",
+            $order_ids
+        );
+
+        $addr_rows = $wpdb->get_results( $sql_addr );
+        if ( ! empty( $addr_rows ) ) {
+            foreach ( $addr_rows as $arow ) {
+                $oid = (int) $arow->order_id;
+                if ( isset( $order_data[ $oid ] ) ) {
+                    $order_data[ $oid ]['billing_email'] = $arow->email;
+                }
+            }
+        }
+
+        // Get shipping method from wc_order_operational_data or order items.
+        // For simplicity, we'll fetch from order items (woocommerce_order_items).
+        $items_table = $wpdb->prefix . 'woocommerce_order_items';
+        $sql_ship = $wpdb->prepare(
+            "SELECT order_id, order_item_name
+             FROM {$items_table}
+             WHERE order_id IN ({$placeholders})
+             AND order_item_type = 'shipping'",
+            $order_ids
+        );
+
+        $ship_rows = $wpdb->get_results( $sql_ship );
+        if ( ! empty( $ship_rows ) ) {
+            foreach ( $ship_rows as $srow ) {
+                $oid = (int) $srow->order_id;
+                if ( isset( $order_data[ $oid ] ) && empty( $order_data[ $oid ]['shipping'] ) ) {
+                    $order_data[ $oid ]['shipping'] = $srow->order_item_name;
+                }
+            }
+        }
+
+        // Format for output.
+        foreach ( $order_data as $oid => $data ) {
+            $results[ $oid ] = $this->format_order_data_for_output( $data );
+        }
+
+        return $results;
+    }
+
+    /**
+     * Fetch order data via legacy posts/postmeta tables.
+     *
+     * @param int[] $order_ids Order IDs.
+     *
+     * @return array Map of order_id => order data.
+     */
+    protected function get_order_data_legacy( $order_ids ) {
+        global $wpdb;
+
+        $order_ids = array_values( array_filter( array_map( 'intval', (array) $order_ids ) ) );
+
+        if ( empty( $order_ids ) ) {
+            return array();
+        }
+
+        $results = array();
+
+        $placeholders = implode( ',', array_fill( 0, count( $order_ids ), '%d' ) );
+
+        // Main order data from wp_posts.
+        $sql = $wpdb->prepare(
+            "SELECT ID, post_status, post_date_gmt
+             FROM {$wpdb->posts}
+             WHERE ID IN ({$placeholders})
+             AND post_type = 'shop_order'",
+            $order_ids
+        );
+
+        $rows = $wpdb->get_results( $sql );
+
+        if ( empty( $rows ) ) {
+            return array();
+        }
+
+        $order_data = array();
+        foreach ( $rows as $row ) {
+            $order_data[ (int) $row->ID ] = array(
+                'id'            => (int) $row->ID,
+                'status'        => str_replace( 'wc-', '', $row->post_status ),
+                'date_gmt'      => $row->post_date_gmt,
+                'total'         => '',
+                'currency'      => '',
+                'payment'       => '',
+                'billing_email' => '',
+                'shipping'      => '',
+            );
+        }
+
+        // Fetch needed meta keys in a single query.
+        $meta_keys = array( '_order_total', '_order_currency', '_payment_method_title', '_billing_email' );
+        $key_placeholders = implode( ',', array_fill( 0, count( $meta_keys ), '%s' ) );
+
+        $sql_meta = $wpdb->prepare(
+            "SELECT post_id, meta_key, meta_value
+             FROM {$wpdb->postmeta}
+             WHERE post_id IN ({$placeholders})
+             AND meta_key IN ({$key_placeholders})",
+            array_merge( $order_ids, $meta_keys )
+        );
+
+        $meta_rows = $wpdb->get_results( $sql_meta );
+
+        if ( ! empty( $meta_rows ) ) {
+            foreach ( $meta_rows as $mrow ) {
+                $oid = (int) $mrow->post_id;
+                if ( ! isset( $order_data[ $oid ] ) ) {
+                    continue;
+                }
+                switch ( $mrow->meta_key ) {
+                    case '_order_total':
+                        $order_data[ $oid ]['total'] = $mrow->meta_value;
+                        break;
+                    case '_order_currency':
+                        $order_data[ $oid ]['currency'] = $mrow->meta_value;
+                        break;
+                    case '_payment_method_title':
+                        $order_data[ $oid ]['payment'] = $mrow->meta_value;
+                        break;
+                    case '_billing_email':
+                        $order_data[ $oid ]['billing_email'] = $mrow->meta_value;
+                        break;
+                }
+            }
+        }
+
+        // Get shipping method from order items.
+        $items_table = $wpdb->prefix . 'woocommerce_order_items';
+        $sql_ship = $wpdb->prepare(
+            "SELECT order_id, order_item_name
+             FROM {$items_table}
+             WHERE order_id IN ({$placeholders})
+             AND order_item_type = 'shipping'",
+            $order_ids
+        );
+
+        $ship_rows = $wpdb->get_results( $sql_ship );
+        if ( ! empty( $ship_rows ) ) {
+            foreach ( $ship_rows as $srow ) {
+                $oid = (int) $srow->order_id;
+                if ( isset( $order_data[ $oid ] ) && empty( $order_data[ $oid ]['shipping'] ) ) {
+                    $order_data[ $oid ]['shipping'] = $srow->order_item_name;
+                }
+            }
+        }
+
+        // Format for output.
+        foreach ( $order_data as $oid => $data ) {
+            $results[ $oid ] = $this->format_order_data_for_output( $data );
+        }
+
+        return $results;
+    }
+
+    /**
+     * Format raw order data array into output format.
+     *
+     * @param array $data Raw order data with keys: id, status, date_gmt, total, currency, payment, billing_email, shipping.
+     *
+     * @return array Formatted order data for JSON output.
+     */
+    protected function format_order_data_for_output( $data ) {
+        $order_id = (int) $data['id'];
+        $status   = (string) $data['status'];
+
+        // Build admin edit URL.
+        $edit_link = admin_url( 'post.php?post=' . $order_id . '&action=edit' );
+
+        // Format date.
+        $date_formatted = '';
+        if ( ! empty( $data['date_gmt'] ) && '0000-00-00 00:00:00' !== $data['date_gmt'] ) {
+            $timestamp = strtotime( $data['date_gmt'] );
+            if ( $timestamp ) {
+                $date_formatted = date_i18n(
+                    get_option( 'date_format' ) . ' ' . get_option( 'time_format' ),
+                    $timestamp + ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS )
+                );
+            }
+        }
+
+        // Format total with currency.
+        $total_formatted = '';
+        if ( '' !== $data['total'] && function_exists( 'wc_price' ) ) {
+            $total_formatted = wc_price( $data['total'], array( 'currency' => $data['currency'] ) );
+        } elseif ( '' !== $data['total'] ) {
+            $total_formatted = $data['currency'] . ' ' . number_format( (float) $data['total'], 2 );
+        }
+
+        // Get status label.
+        $status_label = $status;
+        if ( function_exists( 'wc_get_order_status_name' ) ) {
+            $status_label = wc_get_order_status_name( $status );
+        }
+
+        return array(
+            'id'            => $order_id,
+            'number'        => (string) $order_id, // Order number is typically the ID unless customized.
+            'status'        => esc_attr( $status ),
+            'status_label'  => esc_html( $status_label ),
+            'total'         => $total_formatted,
+            'date'          => esc_html( $date_formatted ),
+            'payment'       => esc_html( (string) $data['payment'] ),
+            'shipping'      => esc_html( (string) $data['shipping'] ),
+            'view_url'      => esc_url_raw( $edit_link ),
+            'billing_email' => esc_html( (string) $data['billing_email'] ),
+        );
+    }
+
+    /**
      * Get recent orders for a given customer ID + email.
      * Returns simplified data suitable for JSON.
      *
@@ -676,6 +1008,8 @@ class KISS_Woo_COS_Search {
             $results[ $user_id ] = array();
         }
 
+        $t_orders_start = microtime( true );
+
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
         error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
@@ -710,10 +1044,12 @@ class KISS_Woo_COS_Search {
             array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
         );
 
+        $t_sql_start = microtime( true );
         $rows = $wpdb->get_results( $sql );
+        $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         if ( empty( $rows ) ) {
             return $results;
@@ -747,28 +1083,19 @@ class KISS_Woo_COS_Search {
         }
 
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] wc_get_orders START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
-        // Hydrate orders in one go.
-        $orders = wc_get_orders(
-            array(
-                'include' => $all_order_ids,
-                'limit'   => -1,
-                'orderby' => 'include',
-            )
-        );
+        // IMPORTANT: Avoid wc_get_orders() - it triggers expensive hooks/plugins on large sites.
+        // Use direct SQL to fetch only the fields we need for display.
+        $t_hydrate_start = microtime( true );
+        $order_data = $this->get_order_data_via_sql( $all_order_ids );
+        $t_hydrate_elapsed = round( ( microtime( true ) - $t_hydrate_start ) * 1000, 2 );
 
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] wc_get_orders DONE - orders: ' . count( $orders ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
-        if ( empty( $orders ) ) {
+        if ( empty( $order_data ) ) {
             return $results;
-        }
-
-        $orders_by_id = array();
-        foreach ( $orders as $order ) {
-            /** @var WC_Order $order */
-            $orders_by_id[ (int) $order->get_id() ] = $order;
         }
 
         foreach ( $order_ids_by_customer as $customer_id => $order_ids ) {
@@ -777,10 +1104,10 @@ class KISS_Woo_COS_Search {
             }
 
             foreach ( $order_ids as $order_id ) {
-                if ( ! isset( $orders_by_id[ $order_id ] ) ) {
+                if ( ! isset( $order_data[ $order_id ] ) ) {
                     continue;
                 }
-                $results[ $customer_id ][] = $this->format_order_for_output( $orders_by_id[ $order_id ] );
+                $results[ $customer_id ][] = $order_data[ $order_id ];
             }
         }
 
