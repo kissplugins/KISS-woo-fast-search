@@ -139,6 +139,7 @@ class KISS_Woo_COS_Admin_Page {
                 </button>
                 <span id="kiss-cos-search-status" class="kiss-cos-search-status"></span>
             </form>
+            <div id="kiss-cos-search-time" class="kiss-cos-search-time"></div>
 
             <div id="kiss-cos-results" class="kiss-cos-results">
                 <!-- Results injected by JS -->
@@ -155,6 +156,11 @@ class KISS_Woo_COS_Admin_Page {
                 .kiss-cos-search-status {
                     margin-left: 10px;
                     font-style: italic;
+                }
+                .kiss-cos-search-time {
+                    margin-top: 8px;
+                    font-size: 12px;
+                    color: #666;
                 }
                 .kiss-cos-results .kiss-cos-customer {
                     background: #fff;

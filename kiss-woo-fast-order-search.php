@@ -122,15 +122,20 @@ class KISS_Woo_Customer_Order_Search_Plugin {
             wp_send_json_error( array( 'message' => __( 'Please enter at least 2 characters.', 'kiss-woo-customer-order-search' ) ) );
         }
 
+        $t_start = microtime( true );
+
         $search = new KISS_Woo_COS_Search();
 
         $customers    = $search->search_customers( $term );
         $guest_orders = $search->search_guest_orders_by_email( $term );
 
+        $elapsed_seconds = round( microtime( true ) - $t_start, 2 );
+
         wp_send_json_success(
             array(
                 'customers'    => $customers,
                 'guest_orders' => $guest_orders,
+                'search_time'  => $elapsed_seconds,
             )
         );
     }
