@@ -13,6 +13,40 @@ class KISS_Woo_COS_Search {
     protected $last_lookup_debug = array();
 
     /**
+     * Search term normalizer
+     *
+     * @var Hypercart_Search_Term_Normalizer
+     */
+    protected $normalizer;
+
+    /**
+     * Strategy selector
+     *
+     * @var Hypercart_Search_Strategy_Selector
+     */
+    protected $strategy_selector;
+
+    /**
+     * Memory monitor
+     *
+     * @var Hypercart_Memory_Monitor
+     */
+    protected $memory_monitor;
+
+    /**
+     * Constructor - Initialize refactored components
+     */
+    public function __construct() {
+        $this->normalizer         = new Hypercart_Search_Term_Normalizer();
+        $this->strategy_selector  = new Hypercart_Search_Strategy_Selector();
+        $this->memory_monitor     = new Hypercart_Memory_Monitor( 50 * 1024 * 1024 ); // 50MB limit
+
+        // Register search strategies (in priority order)
+        $this->strategy_selector->register( new Hypercart_Customer_Lookup_Strategy() );
+        $this->strategy_selector->register( new Hypercart_WP_User_Query_Strategy() );
+    }
+
+    /**
      * Whether debug logging is enabled.
      *
      * Default: disabled. Enable by defining `KISS_WOO_COS_DEBUG` as true.
@@ -55,6 +89,8 @@ class KISS_Woo_COS_Search {
     /**
      * Find matching customers by email or name.
      *
+     * REFACTORED (Phase 2): Now uses strategy pattern with memory monitoring
+     *
      * @param string $term Search term.
      *
      * @return array
@@ -63,58 +99,69 @@ class KISS_Woo_COS_Search {
         $t0 = microtime( true );
         $term = trim( $term );
 
-        // Prefer WooCommerce lookup table to avoid wp_usermeta OR+LIKE scans.
-        $user_ids  = $this->search_user_ids_via_customer_lookup( $term, 20 );
-        $used_path = ! empty( $user_ids ) ? 'wc_customer_lookup' : 'fallback_wp_user_query';
+        // Reset memory monitor
+        $this->memory_monitor->reset();
+
+        // Normalize search term
+        $normalized = $this->normalizer->normalize( $term );
+
+        // Validate term
+        if ( ! $this->normalizer->is_valid( $normalized ) ) {
+            return array();
+        }
+
+        // Select best available strategy
+        $strategy = $this->strategy_selector->select();
+
+        if ( ! $strategy ) {
+            $this->debug_log( 'search_customers_error', array( 'error' => 'No search strategy available' ) );
+            return array();
+        }
+
+        $used_path = $strategy->get_name();
+
+        // Execute search with memory monitoring
+        try {
+            $this->memory_monitor->check(); // Check before search
+
+            $user_ids = $strategy->search( $normalized, 20 );
+
+            $this->memory_monitor->check(); // Check after search
+
+            // Store debug info if available
+            if ( method_exists( $strategy, 'get_last_debug' ) ) {
+                $this->last_lookup_debug = $strategy->get_last_debug();
+            }
+        } catch ( Exception $e ) {
+            $this->debug_log(
+                'search_customers_error',
+                array(
+                    'error'   => $e->getMessage(),
+                    'memory'  => $this->memory_monitor->get_stats(),
+                )
+            );
+            return array();
+        }
 
         // IMPORTANT: Avoid `fields => all_with_meta` (loads *all* usermeta). We only need a few keys.
         $user_fields = array( 'ID', 'user_email', 'display_name', 'user_registered' );
 
-        if ( ! empty( $user_ids ) ) {
-            $user_query = new WP_User_Query(
-                array(
-                    'include'               => $user_ids,
-                    'orderby'               => 'include',
-                    'fields'                => $user_fields,
-                    'number'                => count( $user_ids ),
-                    'count_total'           => false,
-                    'update_user_meta_cache'=> false,
-                )
-            );
-            $users = $user_query->get_results();
-        } else {
-            // Fallback to WP_User_Query (less efficient on large datasets).
-            $user_query_args = array(
-                'number'                 => 20,
-                'fields'                 => $user_fields,
-                'orderby'                => 'registered',
-                'order'                  => 'DESC',
-                'search'                 => '*' . esc_attr( $term ) . '*',
-                'search_columns'         => array( 'user_email', 'user_login', 'display_name' ),
-                'update_user_meta_cache' => false,
-                'meta_query'             => array(
-                    'relation' => 'OR',
-                    array(
-                        'key'     => 'billing_email',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                    array(
-                        'key'     => 'billing_first_name',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                    array(
-                        'key'     => 'billing_last_name',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                ),
-            );
-
-            $user_query = new WP_User_Query( $user_query_args );
-            $users      = $user_query->get_results();
+        if ( empty( $user_ids ) ) {
+            return array();
         }
+
+        // Hydrate user objects (batch operation)
+        $user_query = new WP_User_Query(
+            array(
+                'include'                => $user_ids,
+                'orderby'                => 'include',
+                'fields'                 => $user_fields,
+                'number'                 => count( $user_ids ),
+                'count_total'            => false,
+                'update_user_meta_cache' => false,
+            )
+        );
+        $users = $user_query->get_results();
 
         $results = array();
 

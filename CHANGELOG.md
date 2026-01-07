@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Phase 2: Refactoring (2026-01-06)
+- **Search Strategy Pattern**: Implemented modular search architecture
+  - `Hypercart_Search_Term_Normalizer` - Single source of truth for term normalization
+  - `Hypercart_Search_Strategy` interface - Contract for all search strategies
+  - `Hypercart_Customer_Lookup_Strategy` - Fast indexed search (wraps existing code)
+  - `Hypercart_WP_User_Query_Strategy` - Fallback search with FIXED name splitting
+  - `Hypercart_Search_Strategy_Selector` - Automatic strategy selection by priority
+- **Memory Safety**: Added memory monitoring and circuit breaker
+  - `Hypercart_Memory_Monitor` - Tracks memory usage and enforces 50MB limit
+  - Prevents >512MB memory exhaustion crashes
+  - Real-time memory checking during search operations
+- **Critical Bug Fix**: WP_User_Query name splitting now works correctly
+  - Previous: "John Smith" searched as single string (BROKEN)
+  - Fixed: "John Smith" split into first_name AND last_name queries
+  - Applies to both customer_lookup AND wp_user_query strategies
+
+### Changed - Phase 2: Refactoring (2026-01-06)
+- Refactored `KISS_Woo_COS_Search::search_customers()` to use strategy pattern
+- Extracted name splitting logic to `Hypercart_Search_Term_Normalizer` (DRY principle)
+- Added memory monitoring to all search operations
+- Improved error handling with try/catch blocks
+- Enhanced debug logging with strategy names and memory stats
+
+### Critical Findings (2026-01-06)
+- **CRITICAL: System Broken at Production Scale**: Benchmark crashed THREE times, benchmarking ABORTED
+  - Crash #1: 256MB limit exhausted in `class-wpdb.php`
+  - Crash #2: 512MB limit exhausted (Stock WC search)
+  - Crash #3: 512MB limit exhausted (Stock WP search, even with Stock WC skipped)
+  - Root causes:
+    - Stock WooCommerce `search_customers()` has NO LIMIT, loads ALL customers into memory
+    - Stock WordPress `WP_User_Query::get_total()` loads ALL users to count them
+  - Impact: **PRODUCTION BLOCKER** - Cannot run search operations at scale
+  - Decision: **ABORT Phase 1 (Benchmarking)** - Cannot safely compare implementations
+  - Evidence: Sufficient to justify immediate refactoring
+  - Next: **SKIP TO Phase 2 (Refactoring)** - Design memory-safe architecture
+
+### Added - Phase 1: Test Infrastructure (2026-01-06) - PARTIALLY COMPLETED
+- **Test Data Fixtures**: Created `Hypercart_Test_Data_Factory` with 8 customer scenarios, 2 guest scenarios, and large dataset generator (1000+ customers)
+- **Performance Benchmark Harness**: Created `Hypercart_Performance_Benchmark` to compare against stock WC/WP search with detailed metrics
+  - Memory safety checks and circuit breakers added after crashes
+  - "Skip Stock WC" option to prevent memory exhaustion
+- **Benchmark Runner**: Created `run-benchmarks.php` CLI tool to execute comparative benchmarks
+- **Test Documentation**: Created comprehensive test suite README with usage instructions and performance gates
+- **Performance Gates**: Established minimum requirements (10x faster than stock WC, <10 queries, <50MB memory, <2s execution)
+- **Admin Performance Tests Page**: Created `KISS_Woo_COS_Performance_Tests` admin page under WooCommerce menu
+  - Run comprehensive benchmarks via WordPress admin interface
+  - Compare Hypercart Fast Search vs Stock WooCommerce vs Stock WordPress
+  - Visual performance gates with pass/fail indicators
+  - Historical tracking of benchmark results stored in `wp_options` table (last 50 results)
+  - Export-ready JSON format for baseline metrics documentation
+  - Detailed metrics: query count, execution time, memory usage, result count, improvement ratios
+  - Memory safety warnings and controls
+- **Decision Documents**:
+  - `PROJECT/2-WORKING/CRITICAL-FINDING-MEMORY-EXHAUSTION.md` - Detailed crash analysis
+  - `PROJECT/2-WORKING/DECISION-ABORT-BENCHMARKING.md` - Rationale for skipping to refactoring
+  - `PROJECT/1-INBOX/NEXT-STEPS-REFACTORING.md` - Roadmap for Phase 2
+- ❌ **Comparative Benchmarking**: ABORTED - Stock implementations crash with >512MB memory, cannot safely run tests
+
 ### Changed
 - Performance: Stop loading full usermeta (`all_with_meta`) during search results; fetch only core user fields and batch-load just `billing_first_name`, `billing_last_name`, and `billing_email`.
 - Maintenance: Add a warning tripwire if `get_recent_orders_for_customer()` is called multiple times (helps catch accidental N+1 reintroduction).
