@@ -13,6 +13,67 @@ class KISS_Woo_COS_Search {
     protected $last_lookup_debug = array();
 
     /**
+     * Search term normalizer
+     *
+     * @var Hypercart_Search_Term_Normalizer
+     */
+    protected $normalizer;
+
+    /**
+     * Strategy selector
+     *
+     * @var Hypercart_Search_Strategy_Selector
+     */
+    protected $strategy_selector;
+
+    /**
+     * Memory monitor
+     *
+     * @var Hypercart_Memory_Monitor
+     */
+    protected $memory_monitor;
+
+    /**
+     * Query monitor (Phase 3)
+     *
+     * @var Hypercart_Query_Monitor
+     */
+    protected $query_monitor;
+
+    /**
+     * Search cache (Phase 3)
+     *
+     * @var Hypercart_Search_Cache
+     */
+    protected $cache;
+
+    /**
+     * Order formatter (Phase 3)
+     *
+     * @var Hypercart_Order_Formatter
+     */
+    protected $order_formatter;
+
+    /**
+     * Constructor - Initialize refactored components
+     */
+    public function __construct() {
+        // Phase 2: Search strategies
+        $this->normalizer         = new Hypercart_Search_Term_Normalizer();
+        $this->strategy_selector  = new Hypercart_Search_Strategy_Selector();
+        $this->memory_monitor     = new Hypercart_Memory_Monitor( 50 * 1024 * 1024 ); // 50MB limit
+
+        // Phase 3: Optimization
+        $this->query_monitor      = new Hypercart_Query_Monitor( 10 ); // 10 query limit
+        $this->cache              = new Hypercart_Search_Cache( 300, true ); // 5 min cache
+        $this->order_formatter    = new Hypercart_Order_Formatter();
+
+        // Register search strategies (in priority order)
+        $this->strategy_selector->register( new Hypercart_Customer_Lookup_Strategy() );
+        $this->strategy_selector->register( new Hypercart_WP_User_Query_Strategy() );
+    }
+
+    /**
      * Whether debug logging is enabled.
      *
      * Default: disabled. Enable by defining `KISS_WOO_COS_DEBUG` as true.
@@ -55,6 +116,9 @@ class KISS_Woo_COS_Search {
     /**
      * Find matching customers by email or name.
      *
+     * REFACTORED (Phase 2): Strategy pattern with memory monitoring
+     * OPTIMIZED (Phase 3): Caching and query monitoring
+     *
      * @param string $term Search term.
      *
      * @return array
@@ -63,58 +127,89 @@ class KISS_Woo_COS_Search {
         $t0 = microtime( true );
         $term = trim( $term );
 
-        // Prefer WooCommerce lookup table to avoid wp_usermeta OR+LIKE scans.
-        $user_ids  = $this->search_user_ids_via_customer_lookup( $term, 20 );
-        $used_path = ! empty( $user_ids ) ? 'wc_customer_lookup' : 'fallback_wp_user_query';
+        // Phase 3: Check cache first
+        $cache_key = $this->cache->get_search_key( $term, 'customers' );
+        $cached    = $this->cache->get( $cache_key );
+
+        if ( null !== $cached ) {
+            $this->debug_log(
+                'search_customers_cache_hit',
+                array(
+                    'term'       => $term,
+                    'cache_key'  => $cache_key,
+                    'elapsed_ms' => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+                )
+            );
+            return $cached;
+        }
+
+        // Phase 3: Reset monitors
+        $this->memory_monitor->reset();
+        $this->query_monitor->reset();
+
+        // Normalize search term
+        $normalized = $this->normalizer->normalize( $term );
+
+        // Validate term
+        if ( ! $this->normalizer->is_valid( $normalized ) ) {
+            return array();
+        }
+
+        // Select best available strategy
+        $strategy = $this->strategy_selector->select();
+
+        if ( ! $strategy ) {
+            $this->debug_log( 'search_customers_error', array( 'error' => 'No search strategy available' ) );
+            return array();
+        }
+
+        $used_path = $strategy->get_name();
+
+        // Execute search with monitoring
+        try {
+            $this->memory_monitor->check(); // Check before search
+            $this->query_monitor->log_query( 'strategy_search', array( 'strategy' => $used_path ) );
+
+            $user_ids = $strategy->search( $normalized, 20 );
+
+            $this->memory_monitor->check(); // Check after search
+            $this->query_monitor->check(); // Check query count
+
+            // Store debug info if available
+            if ( method_exists( $strategy, 'get_last_debug' ) ) {
+                $this->last_lookup_debug = $strategy->get_last_debug();
+            }
+        } catch ( Exception $e ) {
+            $this->debug_log(
+                'search_customers_error',
+                array(
+                    'error'   => $e->getMessage(),
+                    'memory'  => $this->memory_monitor->get_stats(),
+                    'queries' => $this->query_monitor->get_stats(),
+                )
+            );
+            return array();
+        }
 
         // IMPORTANT: Avoid `fields => all_with_meta` (loads *all* usermeta). We only need a few keys.
         $user_fields = array( 'ID', 'user_email', 'display_name', 'user_registered' );
 
-        if ( ! empty( $user_ids ) ) {
-            $user_query = new WP_User_Query(
-                array(
-                    'include'               => $user_ids,
-                    'orderby'               => 'include',
-                    'fields'                => $user_fields,
-                    'number'                => count( $user_ids ),
-                    'count_total'           => false,
-                    'update_user_meta_cache'=> false,
-                )
-            );
-            $users = $user_query->get_results();
-        } else {
-            // Fallback to WP_User_Query (less efficient on large datasets).
-            $user_query_args = array(
-                'number'                 => 20,
-                'fields'                 => $user_fields,
-                'orderby'                => 'registered',
-                'order'                  => 'DESC',
-                'search'                 => '*' . esc_attr( $term ) . '*',
-                'search_columns'         => array( 'user_email', 'user_login', 'display_name' ),
-                'update_user_meta_cache' => false,
-                'meta_query'             => array(
-                    'relation' => 'OR',
-                    array(
-                        'key'     => 'billing_email',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                    array(
-                        'key'     => 'billing_first_name',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                    array(
-                        'key'     => 'billing_last_name',
-                        'value'   => $term,
-                        'compare' => 'LIKE',
-                    ),
-                ),
-            );
-
-            $user_query = new WP_User_Query( $user_query_args );
-            $users      = $user_query->get_results();
+        if ( empty( $user_ids ) ) {
+            return array();
         }
+
+        // Hydrate user objects (batch operation)
+        $user_query = new WP_User_Query(
+            array(
+                'include'                => $user_ids,
+                'orderby'                => 'include',
+                'fields'                 => $user_fields,
+                'number'                 => count( $user_ids ),
+                'count_total'            => false,
+                'update_user_meta_cache' => false,
+            )
+        );
+        $users = $user_query->get_results();
 
         $results = array();
 
@@ -164,6 +259,10 @@ class KISS_Woo_COS_Search {
 
         $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
 
+        // Phase 3: Cache results
+        $this->cache->set( $cache_key, $results );
+
+        // Phase 3: Enhanced debug logging
         $this->debug_log(
             'search_customers',
             array(
@@ -172,6 +271,9 @@ class KISS_Woo_COS_Search {
                 'lookup_debug'  => $this->last_lookup_debug,
                 'results_users' => is_array( $users ) ? count( $users ) : 0,
                 'elapsed_ms'    => round( $elapsed_ms, 2 ),
+                'memory_stats'  => $this->memory_monitor->get_stats(),
+                'query_stats'   => $this->query_monitor->get_stats(),
+                'cached'        => false,
             )
         );
 
@@ -673,9 +775,10 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        // Fetch more than the final per-customer cap because we apply the 10-per-customer cap in PHP.
-        // (Worst case: many recent orders belong to one customer.)
-        $candidate_limit = count( $user_ids ) * 10 * 5;
+        // Phase 3 FIX: Cap candidate_limit to prevent memory exhaustion
+        // Previous: count($user_ids) * 10 * 5 could be 1000+ orders (100MB+ memory)
+        // Fixed: Absolute maximum of 200 orders (~20MB max)
+        $candidate_limit = min( count( $user_ids ) * 10 * 5, 200 );
 
         $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
         $user_placeholders   = implode( ',', array_fill( 0, count( $user_ids ), '%s' ) );
@@ -726,25 +829,24 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        // Hydrate orders in one go.
-        $orders = wc_get_orders(
-            array(
-                'include' => $all_order_ids,
-                'limit'   => -1,
-                'orderby' => 'include',
-            )
-        );
+        // Phase 3 OPTIMIZATION: Use direct SQL instead of wc_get_orders()
+        // Previous: wc_get_orders() loads full WC_Order objects (~100KB each)
+        // Fixed: Direct SQL fetches only needed fields (~1KB each)
+        // Memory savings: 200 orders × 99KB = ~20MB saved!
+        $this->query_monitor->log_query( 'get_order_summaries', array( 'count' => count( $all_order_ids ) ) );
+        $order_summaries = $this->order_formatter->get_order_summaries( $all_order_ids );
 
-        if ( empty( $orders ) ) {
+        if ( empty( $order_summaries ) ) {
             return $results;
         }
 
+        // Index by order ID for fast lookup
         $orders_by_id = array();
-        foreach ( $orders as $order ) {
-            /** @var WC_Order $order */
-            $orders_by_id[ (int) $order->get_id() ] = $order;
+        foreach ( $order_summaries as $order ) {
+            $orders_by_id[ (int) $order['id'] ] = $order;
         }
 
+        // Group orders by customer
         foreach ( $order_ids_by_customer as $customer_id => $order_ids ) {
             if ( empty( $order_ids ) ) {
                 continue;
@@ -754,7 +856,7 @@ class KISS_Woo_COS_Search {
                 if ( ! isset( $orders_by_id[ $order_id ] ) ) {
                     continue;
                 }
-                $results[ $customer_id ][] = $this->format_order_for_output( $orders_by_id[ $order_id ] );
+                $results[ $customer_id ][] = $orders_by_id[ $order_id ];
             }
         }
 

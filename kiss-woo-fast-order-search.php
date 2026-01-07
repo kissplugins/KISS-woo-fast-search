@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.0.2
+ * Version: 2.0.0
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.0.2' );
+    define( 'KISS_WOO_COS_VERSION', '2.0.0' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -65,9 +65,25 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         }
 
         // Include files.
+        // Search infrastructure (Phase 2 refactoring)
+        require_once KISS_WOO_COS_PATH . 'includes/search/class-hypercart-search-term-normalizer.php';
+        require_once KISS_WOO_COS_PATH . 'includes/search/interface-hypercart-search-strategy.php';
+        require_once KISS_WOO_COS_PATH . 'includes/search/class-hypercart-customer-lookup-strategy.php';
+        require_once KISS_WOO_COS_PATH . 'includes/search/class-hypercart-wp-user-query-strategy.php';
+        require_once KISS_WOO_COS_PATH . 'includes/search/class-hypercart-search-strategy-selector.php';
+        // Monitoring infrastructure (Phase 2)
+        require_once KISS_WOO_COS_PATH . 'includes/monitoring/class-hypercart-memory-monitor.php';
+        require_once KISS_WOO_COS_PATH . 'includes/monitoring/class-hypercart-query-monitor.php';
+        // Caching infrastructure (Phase 3)
+        require_once KISS_WOO_COS_PATH . 'includes/caching/class-hypercart-search-cache.php';
+        // Optimization infrastructure (Phase 3)
+        require_once KISS_WOO_COS_PATH . 'includes/optimization/class-hypercart-order-formatter.php';
+        // Main search class
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
+        // Admin pages
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-settings.php';
+        require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-performance-tests.php';
         // Floating toolbar integration (admin only).
         if ( is_admin() ) {
             require_once KISS_WOO_COS_PATH . 'toolbar.php';
@@ -76,6 +92,7 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         // Init admin page and settings.
         KISS_Woo_COS_Admin_Page::instance();
         KISS_Woo_COS_Settings::instance();
+        KISS_Woo_COS_Performance_Tests::instance();
 
         // Register AJAX handler.
         add_action( 'wp_ajax_kiss_woo_customer_search', array( $this, 'handle_ajax_search' ) );
