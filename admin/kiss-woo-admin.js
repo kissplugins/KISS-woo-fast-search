@@ -3,6 +3,7 @@ jQuery(function ($) {
     var $input  = $('#kiss-cos-search-input');
     var $status = $('#kiss-cos-search-status');
     var $results = $('#kiss-cos-results');
+    var $searchTime = $('#kiss-cos-search-time');
 
     function getQueryParam(name) {
         try {
@@ -125,6 +126,9 @@ jQuery(function ($) {
 
         $status.text(KISSCOS.i18n.searching || 'Searching...');
         $results.empty();
+        $searchTime.text('');
+
+        var startTime = performance.now();
 
         $.ajax({
             url: KISSCOS.ajax_url,
@@ -143,6 +147,17 @@ jQuery(function ($) {
             }
 
             renderResults(resp.data);
+
+            // Display both total round-trip time and database search time with percentage
+            var totalSeconds = ((performance.now() - startTime) / 1000).toFixed(2);
+            var dbSeconds = (resp.data && typeof resp.data.search_time !== 'undefined') ? resp.data.search_time : null;
+
+            if (dbSeconds !== null && totalSeconds > 0) {
+                var dbPercent = Math.round((dbSeconds / totalSeconds) * 100);
+                $searchTime.text('Search completed in ' + totalSeconds + 's (database: ' + dbSeconds + 's / ' + dbPercent + '%)');
+            } else {
+                $searchTime.text('Search completed in ' + totalSeconds + ' seconds');
+            }
         }).fail(function () {
             $results.html('<p><strong>Request failed. Please try again.</strong></p>');
         }).always(function () {
