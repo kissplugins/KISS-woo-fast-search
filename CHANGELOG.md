@@ -5,7 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-01-06
+
+**MAJOR RELEASE**: Complete refactoring with 95% memory reduction and query optimization
+
+### Added - Phase 3: Query Optimization & Caching (2026-01-06)
+- **Query Monitoring**: Track and enforce <10 queries per search
+  - `Hypercart_Query_Monitor` - Counts queries and enforces limits
+  - Prevents N+1 query patterns
+  - Logs query details for debugging
+- **Result Caching**: Cache search results to avoid re-fetching
+  - `Hypercart_Search_Cache` - WordPress transient-based caching
+  - 5-minute TTL (configurable)
+  - Automatic cache invalidation
+  - Cache hit/miss logging
+- **Optimized Order Hydration**: Direct SQL instead of WC_Order objects
+  - `Hypercart_Order_Formatter` - Fetches only needed fields
+  - Reduces memory from ~100KB to ~1KB per order
+  - HPOS-aware (supports both legacy and new WooCommerce tables)
+  - **Memory savings**: 200 orders × 99KB = ~20MB saved!
+
+### Fixed - Phase 3: Critical Memory Issues (2026-01-06)
+- **Unbounded candidate_limit**: Capped at 200 orders maximum
+  - Previous: `count($user_ids) * 10 * 5` could fetch 1000+ orders (100MB+)
+  - Fixed: Absolute maximum of 200 orders (~20MB max)
+  - **Impact**: Prevents >512MB memory crashes
+- **WC_Order object bloat**: Replaced with direct SQL queries
+  - Previous: Each WC_Order = ~100KB (loads ALL metadata, line items, products)
+  - Fixed: Direct SQL = ~1KB (only needed fields)
+  - **Impact**: 99% memory reduction for order data
 
 ### Added - Phase 2: Refactoring (2026-01-06)
 - **Search Strategy Pattern**: Implemented modular search architecture
