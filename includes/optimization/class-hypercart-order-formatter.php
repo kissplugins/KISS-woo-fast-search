@@ -69,13 +69,16 @@ class Hypercart_Order_Formatter {
 		$results = array();
 		foreach ( $rows as $row ) {
 			$results[] = array(
-				'id'       => (int) $row->id,
-				'number'   => $this->format_order_number( $row->id, $row->order_key ),
-				'date'     => $row->date_created_gmt,
-				'date_h'   => $this->format_date_human( $row->date_created_gmt ),
-				'status'   => $this->format_status( $row->status ),
-				'total'    => $this->format_price( $row->total_amount, $row->currency ),
-				'edit_url' => $this->get_edit_url( $row->id ),
+				'id'           => (int) $row->id,
+				'number'       => $this->format_order_number( $row->id, $row->order_key ),
+				'date'         => $this->format_date_full( $row->date_created_gmt ),
+				'date_h'       => $this->format_date_human( $row->date_created_gmt ),
+				'status'       => $this->format_status( $row->status ),
+				'status_label' => $this->format_status_label( $row->status ),
+				'total'        => $this->format_price( $row->total_amount, $row->currency ),
+				'payment'      => '', // Not available in summary query
+				'shipping'     => '', // Not available in summary query
+				'view_url'     => $this->get_edit_url( $row->id ), // Named view_url for JS compatibility
 			);
 		}
 
@@ -123,13 +126,16 @@ class Hypercart_Order_Formatter {
 		$results = array();
 		foreach ( $rows as $row ) {
 			$results[] = array(
-				'id'       => (int) $row->ID,
-				'number'   => $this->format_order_number( $row->ID, $row->order_key ),
-				'date'     => $row->post_date_gmt,
-				'date_h'   => $this->format_date_human( $row->post_date_gmt ),
-				'status'   => $this->format_status( $row->post_status ),
-				'total'    => $this->format_price( $row->total, $row->currency ),
-				'edit_url' => $this->get_edit_url( $row->ID ),
+				'id'           => (int) $row->ID,
+				'number'       => $this->format_order_number( $row->ID, $row->order_key ),
+				'date'         => $this->format_date_full( $row->post_date_gmt ),
+				'date_h'       => $this->format_date_human( $row->post_date_gmt ),
+				'status'       => $this->format_status( $row->post_status ),
+				'status_label' => $this->format_status_label( $row->post_status ),
+				'total'        => $this->format_price( $row->total, $row->currency ),
+				'payment'      => '', // Not available in summary query
+				'shipping'     => '', // Not available in summary query
+				'view_url'     => $this->get_edit_url( $row->ID ), // Named view_url for JS compatibility
 			);
 		}
 
@@ -160,6 +166,25 @@ class Hypercart_Order_Formatter {
 	}
 
 	/**
+	 * Format date to full format (for display)
+	 *
+	 * @param string $date Date string
+	 * @return string Formatted date
+	 */
+	protected function format_date_full( $date ) {
+		if ( empty( $date ) || '0000-00-00 00:00:00' === $date ) {
+			return '';
+		}
+
+		$timestamp = strtotime( $date );
+		if ( ! $timestamp ) {
+			return '';
+		}
+
+		return date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp );
+	}
+
+	/**
 	 * Format date to human-readable
 	 *
 	 * @param string $date Date string
@@ -174,7 +199,7 @@ class Hypercart_Order_Formatter {
 	}
 
 	/**
-	 * Format status
+	 * Format status (short version)
 	 *
 	 * @param string $status Raw status
 	 * @return string Formatted status
@@ -183,6 +208,25 @@ class Hypercart_Order_Formatter {
 		// Remove 'wc-' prefix if present
 		$status = str_replace( 'wc-', '', $status );
 		return ucfirst( $status );
+	}
+
+	/**
+	 * Format status label (full name)
+	 *
+	 * @param string $status Raw status
+	 * @return string Formatted status label
+	 */
+	protected function format_status_label( $status ) {
+		// Remove 'wc-' prefix if present
+		$status = str_replace( 'wc-', '', $status );
+
+		// Use WooCommerce function if available
+		if ( function_exists( 'wc_get_order_status_name' ) ) {
+			return wc_get_order_status_name( $status );
+		}
+
+		// Fallback to ucfirst
+		return ucfirst( str_replace( '-', ' ', $status ) );
 	}
 
 	/**
