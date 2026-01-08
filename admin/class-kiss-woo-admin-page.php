@@ -106,9 +106,10 @@ class KISS_Woo_COS_Admin_Page {
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
                 'nonce'    => wp_create_nonce( 'kiss_woo_cos_search' ),
                 'i18n'     => array(
-                    'searching'  => __( 'Searching...', 'kiss-woo-customer-order-search' ),
-                    'no_results' => __( 'No matching customers found.', 'kiss-woo-customer-order-search' ),
-                    'guest_title'=> __( 'Guest Orders (no account)', 'kiss-woo-customer-order-search' ),
+                    'searching'       => __( 'Searching...', 'kiss-woo-customer-order-search' ),
+                    'no_results'      => __( 'No matching customers or orders found.', 'kiss-woo-customer-order-search' ),
+                    'guest_title'     => __( 'Guest Orders (no account)', 'kiss-woo-customer-order-search' ),
+                    'matching_orders' => __( 'Matching Orders', 'kiss-woo-customer-order-search' ),
                 ),
             )
         );

@@ -67,13 +67,22 @@ jQuery(function ($) {
     function renderResults(data) {
         var customers = data.customers || [];
         var guestOrders = data.guest_orders || [];
+        var orders = data.orders || [];
 
-        if (!customers.length && !guestOrders.length) {
+        if (!customers.length && !guestOrders.length && !orders.length) {
             $results.html('<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
             return;
         }
 
         var html = '';
+
+        // Render matching orders first (direct order search results)
+        if (orders.length) {
+            html += '<div class="kiss-cos-matching-orders">';
+            html += '<h2>' + (KISSCOS.i18n.matching_orders || 'Matching Orders') + '</h2>';
+            html += renderOrdersTable(orders);
+            html += '</div>';
+        }
 
         customers.forEach(function (cust) {
             html += '<div class="kiss-cos-customer">';
@@ -144,6 +153,12 @@ jQuery(function ($) {
                 var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Something went wrong.';
                 $results.html('<p><strong>' + msg + '</strong></p>');
                 return;
+            }
+
+            // Auto-redirect if backend determined this is a direct order match
+            if (resp.data.should_redirect_to_order && resp.data.orders && resp.data.orders.length === 1) {
+                window.location.href = resp.data.orders[0].view_url;
+                return; // Skip rendering, we're redirecting
             }
 
             renderResults(resp.data);

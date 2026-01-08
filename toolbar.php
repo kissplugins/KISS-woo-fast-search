@@ -265,7 +265,7 @@ class KISS_Woo_COS_Floating_Search_Bar {
                     type="text" 
                     id="floating-search-input" 
                     class="floating-search-input"
-                    placeholder="<?php esc_attr_e( 'Search email or name…', 'kiss-woo-customer-order-search' ); ?>"
+                    placeholder="<?php esc_attr_e( 'Search email, name, or order #…', 'kiss-woo-customer-order-search' ); ?>"
                     autocomplete="off"
                 />
                 <button 

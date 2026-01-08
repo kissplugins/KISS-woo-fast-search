@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.0.2' );
+    define( 'KISS_WOO_COS_VERSION', '1.0.3' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -126,16 +126,34 @@ class KISS_Woo_Customer_Order_Search_Plugin {
 
         $search = new KISS_Woo_COS_Search();
 
+        // Check if term looks like an order number (optimization: skip order search for "john smith" type queries)
+        $is_order_like = $search->is_order_like_term( $term );
+        $orders        = array();
+        $should_redirect_to_order = false;
+
+        if ( $is_order_like ) {
+            // Fast path: Direct ID lookup (< 20ms)
+            $orders = $search->search_orders_by_number( $term );
+
+            // Redirect if we found exactly ONE order via direct ID lookup
+            // Even if there are also customer matches (user typed order number, they want the order)
+            if ( count( $orders ) === 1 ) {
+                $should_redirect_to_order = true;
+            }
+        }
+
         $customers    = $search->search_customers( $term );
         $guest_orders = $search->search_guest_orders_by_email( $term );
 
-        $elapsed_seconds = round( microtime( true ) - $t_start, 2 );
+        $elapsed_seconds = round( microtime( true ) - $t_start, 3 );
 
         wp_send_json_success(
             array(
-                'customers'    => $customers,
-                'guest_orders' => $guest_orders,
-                'search_time'  => $elapsed_seconds,
+                'customers'                => $customers,
+                'guest_orders'             => $guest_orders,
+                'orders'                   => $orders,
+                'should_redirect_to_order' => $should_redirect_to_order,
+                'search_time'              => $elapsed_seconds,
             )
         );
     }

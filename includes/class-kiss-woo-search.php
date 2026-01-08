@@ -1115,6 +1115,148 @@ class KISS_Woo_COS_Search {
     }
 
     /**
+     * Parse and normalize order search term to extract numeric ID.
+     * Supports: 12345, #12345, B12345, #B12345, D12345, #D12345
+     *
+     * NOTE: B/D prefixes are for DISPLAY formatting only.
+     * We extract the numeric ID and verify the formatted number matches.
+     *
+     * @param string $term Search term.
+     *
+     * @return array|null Array with 'prefix', 'id', 'expected_number' or null if not order-like.
+     */
+    protected function parse_order_term( $term ) {
+        $term = trim( strtoupper( $term ) );
+
+        // Strip # prefix
+        $term = ltrim( $term, '#' );
+
+        if ( '' === $term ) {
+            return null;
+        }
+
+        // Configurable prefixes via filter for forks
+        $allowed_prefixes = apply_filters( 'kiss_woo_order_search_prefixes', array( 'B', 'D' ) );
+
+        foreach ( $allowed_prefixes as $prefix ) {
+            if ( strpos( $term, $prefix ) === 0 ) {
+                $numeric = substr( $term, strlen( $prefix ) );
+                if ( ctype_digit( $numeric ) && $numeric !== '' ) {
+                    return array(
+                        'prefix'          => $prefix,
+                        'id'              => (int) $numeric,
+                        'expected_number' => $prefix . $numeric,
+                    );
+                }
+            }
+        }
+
+        // No prefix - just numeric
+        if ( ctype_digit( $term ) ) {
+            return array(
+                'prefix'          => '',
+                'id'              => (int) $term,
+                'expected_number' => $term,
+            );
+        }
+
+        return null; // Not an order-like term
+    }
+
+    /**
+     * Check if a search term looks like an order number.
+     *
+     * @param string $term Search term.
+     *
+     * @return bool
+     */
+    public function is_order_like_term( $term ) {
+        return null !== $this->parse_order_term( $term );
+    }
+
+    /**
+     * Search for order by ID (FAST PATH ONLY - NO FALLBACK).
+     *
+     * IMPORTANT: This does NOT search by "order number string" because:
+     * - Order numbers are generated via get_order_number() filter (not stored)
+     * - No indexed column exists for reverse lookup
+     * - Meta queries would be slow and defeat performance goals
+     *
+     * What this DOES:
+     * - Parse numeric ID from input (supports B/D prefixes for display)
+     * - Direct lookup via wc_get_order($id) - guaranteed < 20ms
+     * - Verify order number matches expected format (for UX)
+     *
+     * @param string $term Search term (numeric or B/D prefix format).
+     *
+     * @return array Array with single order or empty (exact match only).
+     */
+    public function search_orders_by_number( $term ) {
+        $t0 = microtime( true );
+
+        // Parse term
+        $parsed = $this->parse_order_term( $term );
+        if ( ! $parsed ) {
+            $this->debug_log(
+                'search_orders_by_number_skip',
+                array(
+                    'term'   => $term,
+                    'reason' => 'Not an order-like term',
+                )
+            );
+            return array(); // Not an order number format
+        }
+
+        // Direct ID lookup (GUARANTEED < 20ms)
+        $order = wc_get_order( $parsed['id'] );
+        if ( ! $order || ! is_a( $order, 'WC_Order' ) ) {
+            $this->debug_log(
+                'search_orders_by_number_not_found',
+                array(
+                    'term'       => $term,
+                    'parsed_id'  => $parsed['id'],
+                    'elapsed_ms' => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+                )
+            );
+            return array(); // Order doesn't exist
+        }
+
+        // Verify order number matches expected format (UX validation) - only if prefix was used
+        if ( $parsed['prefix'] ) {
+            $actual_number = $order->get_order_number();
+            if ( strtoupper( $actual_number ) !== $parsed['expected_number'] ) {
+                // ID exists but order number doesn't match
+                // Example: User searched "B349445" but order #349445 displays as "D349445"
+                $this->debug_log(
+                    'search_orders_by_number_mismatch',
+                    array(
+                        'term'            => $term,
+                        'parsed_id'       => $parsed['id'],
+                        'expected_number' => $parsed['expected_number'],
+                        'actual_number'   => $actual_number,
+                        'elapsed_ms'      => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+                    )
+                );
+                return array(); // Mismatch - don't show wrong order
+            }
+        }
+
+        // Success - format and return
+        $result = array( $this->format_order_for_output( $order ) );
+
+        $this->debug_log(
+            'search_orders_by_number_success',
+            array(
+                'term'       => $term,
+                'order_id'   => $parsed['id'],
+                'elapsed_ms' => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+            )
+        );
+
+        return $result;
+    }
+
+    /**
      * Search guest orders (no user account) by billing email.
      *
      * @param string $term

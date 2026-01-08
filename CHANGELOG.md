@@ -18,6 +18,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Order “View” links now open the order editor correctly (return raw edit URLs in JSON; avoid `&#038;` entity-encoded query strings).
 
+## [1.0.3] - 2026-01-08
+
+### Added
+- **Direct Order ID Search**: Search for orders by exact ID in the toolbar (e.g., `12345`, `#12345`, `B349445`, `D349445`).
+- Fast path order lookup using direct `wc_get_order($id)` - guaranteed < 20ms performance.
+- Auto-redirect to order edit page when searching for exact order ID match.
+- B/D prefix support with validation - parses prefix, looks up ID, verifies order number matches.
+- New `kiss_woo_order_search_prefixes` filter for developers to customize allowed prefixes.
+- "Matching Orders" section in search results when order is found but no redirect.
+
+### Changed
+- Updated toolbar placeholder text to "Search email, name, or order #…" to indicate order search capability.
+- Updated i18n string `no_results` to mention "customers or orders".
+- AJAX response now includes `orders` array and `should_redirect_to_order` boolean.
+
 ## [1.0.2] - 2026-01-06
 
 ### Added
@@ -50,7 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Localized strings and AJAX configuration injected via `wp_localize_script`.
 - Benchmark page (`WooCommerce → KISS Benchmark`) for search performance comparisons.
 
-[Unreleased]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/yourusername/kiss-woo-fast-search/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/yourusername/kiss-woo-fast-search/releases/tag/v1.0.0
