@@ -5,6 +5,51 @@ jQuery(function ($) {
     var $results = $('#kiss-cos-results');
     var $searchTime = $('#kiss-cos-search-time');
 
+    var $debugPanel = $('#kiss-cos-debug-panel');
+    var $debugToggle = $('#kiss-cos-debug-toggle');
+    var $debugBody = $('#kiss-cos-debug-body');
+    var $debugContent = $('#kiss-cos-debug-content');
+
+    function hideDebugPanel() {
+        if (!$debugPanel.length) return;
+        $debugPanel.attr('hidden', true);
+        $debugBody.attr('hidden', true);
+        $debugToggle.attr('aria-expanded', 'false');
+        $debugToggle.find('.kiss-cos-debug__caret').text('▸');
+        $debugContent.text('');
+    }
+
+    function showDebugPanel(debugObj) {
+        if (!$debugPanel.length) return;
+
+        // Default collapsed to avoid distracting non-technical users.
+        $debugPanel.removeAttr('hidden');
+        $debugBody.attr('hidden', true);
+        $debugToggle.attr('aria-expanded', 'false');
+        $debugToggle.find('.kiss-cos-debug__caret').text('▸');
+
+        try {
+            $debugContent.text(JSON.stringify(debugObj, null, 2));
+        } catch (e) {
+            $debugContent.text(String(debugObj));
+        }
+    }
+
+    if ($debugToggle.length) {
+        $debugToggle.on('click', function () {
+            var expanded = $debugToggle.attr('aria-expanded') === 'true';
+            if (expanded) {
+                $debugToggle.attr('aria-expanded', 'false');
+                $debugBody.attr('hidden', true);
+                $debugToggle.find('.kiss-cos-debug__caret').text('▸');
+            } else {
+                $debugToggle.attr('aria-expanded', 'true');
+                $debugBody.removeAttr('hidden');
+                $debugToggle.find('.kiss-cos-debug__caret').text('▾');
+            }
+        });
+    }
+
     function getQueryParam(name) {
         try {
             var params = new URLSearchParams(window.location.search || '');
@@ -50,13 +95,13 @@ jQuery(function ($) {
 
         orders.forEach(function (order) {
             html += '<tr>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(order.number || order.id) + '</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(order.number || order.id) + '</a></td>' +
                 '<td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td>' +
                 '<td>' + order.total + '</td>' +
                 '<td>' + escapeHtml(order.date) + '</td>' +
                 '<td>' + escapeHtml(order.payment || '') + '</td>' +
                 '<td>' + escapeHtml(order.shipping || '') + '</td>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank">View</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank" rel="noopener noreferrer">View</a></td>' +
                 '</tr>';
         });
 
@@ -69,12 +114,24 @@ jQuery(function ($) {
         var guestOrders = data.guest_orders || [];
         var orders = data.orders || [];
 
-        if (!customers.length && !guestOrders.length && !orders.length) {
-            $results.html('<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
-            return;
+        var html = '';
+
+        // If the server says this was an order-like query but no order was found,
+        // surface that clearly in the main results column.
+        try {
+            if (data && data.debug && data.debug.is_order_like && (!orders || !orders.length)) {
+                html += '<div class="notice notice-warning" style="padding:10px 12px; margin: 0 0 12px 0;">';
+                html += '<p style="margin:0;"><strong>Order not found.</strong> No exact match for <code>' + escapeHtml(data.debug.term || '') + '</code>. The search is super fast because it relies on an exact amount of digits. Please make sure you\'re not missing a digit (or more) when pasting it.</p>';
+                html += '</div>';
+            }
+        } catch (e) {
+            // ignore
         }
 
-        var html = '';
+        if (!customers.length && !guestOrders.length && !orders.length) {
+            $results.html(html + '<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
+            return;
+        }
 
         // Render matching orders first (direct order search results)
         if (orders.length) {
@@ -100,7 +157,7 @@ jQuery(function ($) {
 
             html += '<div class="kiss-cos-customer-actions">';
             if (cust.edit_url) {
-                html += '<a href="' + escapeHtml(cust.edit_url) + '" class="button button-secondary button-small" target="_blank">View user</a>';
+                html += '<a href="' + escapeHtml(cust.edit_url) + '" class="button button-secondary button-small" target="_blank" rel="noopener noreferrer">View user</a>';
             }
             html += '</div>';
 
@@ -136,6 +193,7 @@ jQuery(function ($) {
         $status.text(KISSCOS.i18n.searching || 'Searching...');
         $results.empty();
         $searchTime.text('');
+        hideDebugPanel();
 
         var startTime = performance.now();
 
@@ -149,10 +207,31 @@ jQuery(function ($) {
                 q: q
             }
         }).done(function (resp) {
+            // Debug: Log the full response
+            console.log('AJAX Response:', resp);
+
             if (!resp || !resp.success) {
                 var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Something went wrong.';
-                $results.html('<p><strong>' + msg + '</strong></p>');
+                var debugHtml = '<div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin-bottom: 20px;">';
+                debugHtml += '<h3 style="margin-top: 0; color: #856404;">⚠️ Request Not Successful</h3>';
+                debugHtml += '<p><strong>Message:</strong> ' + msg + '</p>';
+                debugHtml += '<p><strong>Full Response:</strong></p>';
+                debugHtml += '<pre style="background: #fff; padding: 10px; overflow: auto; max-height: 300px;">' +
+                             JSON.stringify(resp, null, 2) + '</pre>';
+                debugHtml += '</div>';
+                $results.html(debugHtml);
                 return;
+            }
+
+            // Developer debugging panel (only present when KISS_WOO_COS_DEBUG is enabled server-side)
+            if (resp.data && resp.data.debug) {
+                showDebugPanel(resp.data.debug);
+                try {
+                    // eslint-disable-next-line no-console
+                    console.log('[KISS_WOO_COS DEBUG]', resp.data.debug);
+                } catch (e) {
+                    // ignore
+                }
             }
 
             // Auto-redirect if backend determined this is a direct order match
@@ -173,8 +252,17 @@ jQuery(function ($) {
             } else {
                 $searchTime.text('Search completed in ' + totalSeconds + ' seconds');
             }
-        }).fail(function () {
-            $results.html('<p><strong>Request failed. Please try again.</strong></p>');
+        }).fail(function (jqXHR, textStatus, errorThrown) {
+            var errorHtml = '<div style="background: #f8d7da; border: 2px solid #f5c6cb; padding: 15px; margin-bottom: 20px;">';
+            errorHtml += '<h3 style="margin-top: 0; color: #721c24;">❌ AJAX Request Failed</h3>';
+            errorHtml += '<p><strong>Status:</strong> ' + textStatus + '</p>';
+            errorHtml += '<p><strong>Error:</strong> ' + errorThrown + '</p>';
+            errorHtml += '<p><strong>HTTP Status:</strong> ' + jqXHR.status + '</p>';
+            errorHtml += '<p><strong>Response Text:</strong></p>';
+            errorHtml += '<pre style="background: #fff; padding: 10px; overflow: auto; max-height: 300px;">' +
+                         (jqXHR.responseText || 'No response text') + '</pre>';
+            errorHtml += '</div>';
+            $results.html(errorHtml);
         }).always(function () {
             $status.text('');
         });

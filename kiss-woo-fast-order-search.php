@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.0.3' );
+    define( 'KISS_WOO_COS_VERSION', '1.0.6' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -126,26 +126,69 @@ class KISS_Woo_Customer_Order_Search_Plugin {
 
         $search = new KISS_Woo_COS_Search();
 
+        $debug_enabled = defined( 'KISS_WOO_COS_DEBUG' ) && (bool) KISS_WOO_COS_DEBUG;
+
         // Check if term looks like an order number (optimization: skip order search for "john smith" type queries)
         $is_order_like = $search->is_order_like_term( $term );
         $orders        = array();
         $should_redirect_to_order = false;
 
+        // Preserve order search debug info (will be overwritten by customer search)
+        $order_debug_info = null;
+
         if ( $is_order_like ) {
             // Fast path: Direct ID lookup (< 20ms)
             $orders = $search->search_orders_by_number( $term );
+
+            // Get debug info from the order search BEFORE it gets overwritten
+            $order_debug_info = $search->get_last_lookup_debug();
 
             // Redirect if we found exactly ONE order via direct ID lookup
             // Even if there are also customer matches (user typed order number, they want the order)
             if ( count( $orders ) === 1 ) {
                 $should_redirect_to_order = true;
+
+                // PERFORMANCE: Return immediately to achieve true < 20ms response
+                // Skip customer/guest searches since we're redirecting anyway
+                $elapsed_seconds = round( microtime( true ) - $t_start, 3 );
+
+                wp_send_json_success(
+                    array(
+                        'customers'                => array(),
+                        'guest_orders'             => array(),
+                        'orders'                   => $orders,
+                        'should_redirect_to_order' => true,
+                        'search_time'              => $elapsed_seconds,
+                        'debug'                    => $debug_enabled ? $order_debug_info : null,
+                    )
+                );
+                return; // Early exit - no need to continue
             }
         }
 
+        // No exact order match or not order-like - run full search
         $customers    = $search->search_customers( $term );
         $guest_orders = $search->search_guest_orders_by_email( $term );
 
         $elapsed_seconds = round( microtime( true ) - $t_start, 3 );
+
+        // Get customer search debug info
+        $customer_debug_info = $search->get_last_lookup_debug();
+
+        // Build comprehensive debug info
+        $debug_info = array(
+            'is_order_like'   => $is_order_like,
+            'term'            => $term,
+            'orders_found'    => count( $orders ),
+        );
+
+        // Include order search debug if we did an order search
+        if ( $order_debug_info ) {
+            $debug_info['order_search_debug'] = $order_debug_info;
+        }
+
+        // Include customer search debug
+        $debug_info['customer_search_debug'] = $customer_debug_info;
 
         wp_send_json_success(
             array(
@@ -154,6 +197,7 @@ class KISS_Woo_Customer_Order_Search_Plugin {
                 'orders'                   => $orders,
                 'should_redirect_to_order' => $should_redirect_to_order,
                 'search_time'              => $elapsed_seconds,
+                'debug'                    => $debug_enabled ? $debug_info : null,
             )
         );
     }

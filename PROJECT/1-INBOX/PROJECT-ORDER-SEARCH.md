@@ -19,10 +19,12 @@
 
 **Supported Formats**: `12345`, `#12345`, `B349445`, `#B349445`, `D349445`, `#D349445` (case-insensitive)
 
-**⚠️ Important Limitations**:
+**⚠️ Important Limitations - Exact Numeric ID Lookup Only**:
 - **Fast path only**: Direct ID lookup via `wc_get_order($id)` - **guaranteed < 20ms**
-- **No "order number string" search**: Reverse lookup by formatted order number (e.g., finding which ID has "B349445") is **NOT implemented** due to lack of indexed storage
-- **Display only**: B/D prefixes are for display formatting via `get_order_number()`, not searchable fields
+- **Numeric ID extraction**: Parses input to extract numeric ID (e.g., "B349445" → ID 349445)
+- **Validation**: After lookup, verifies `get_order_number()` matches input to prevent wrong order redirect
+- **No reverse lookup**: Cannot search "which order has number X" - only "does order ID X exist and match format Y"
+- **Sequential order plugins**: Will NOT find orders where order number ≠ order ID (e.g., "ORD-2024-00123" for ID 349445)
 - **Partial matches**: NOT supported (e.g., "B349" won't find "B349445") - would require slow meta queries
 
 ---

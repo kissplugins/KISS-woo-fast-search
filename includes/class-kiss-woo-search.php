@@ -53,6 +53,15 @@ class KISS_Woo_COS_Search {
     }
 
     /**
+     * Get debug information from the last lookup.
+     *
+     * @return array Debug information array.
+     */
+    public function get_last_lookup_debug() {
+        return $this->last_lookup_debug;
+    }
+
+    /**
      * Find matching customers by email or name.
      *
      * @param string $term Search term.
@@ -1175,17 +1184,23 @@ class KISS_Woo_COS_Search {
     }
 
     /**
-     * Search for order by ID (FAST PATH ONLY - NO FALLBACK).
+     * Search for order by number with two-tier lookup strategy.
      *
-     * IMPORTANT: This does NOT search by "order number string" because:
-     * - Order numbers are generated via get_order_number() filter (not stored)
-     * - No indexed column exists for reverse lookup
-     * - Meta queries would be slow and defeat performance goals
+     * TIER 1 (FAST PATH - < 20ms):
+     * - Parse numeric ID from input (e.g., "B349445" → ID 349445)
+     * - Direct lookup via wc_get_order($id)
+     * - Verify get_order_number() matches input
+     * - Works when order number = prefix + order ID (default WooCommerce)
      *
-     * What this DOES:
-     * - Parse numeric ID from input (supports B/D prefixes for display)
-     * - Direct lookup via wc_get_order($id) - guaranteed < 20ms
-     * - Verify order number matches expected format (for UX)
+     * TIER 2 (META FALLBACK - 50-150ms):
+     * - If fast path fails, search _order_number meta field
+     * - Handles sequential order plugins (SkyVerge, etc.) where order number ≠ order ID
+     * - Example: Order #B331580 with ID 123456 stored in _order_number meta
+     * - HPOS-compatible (searches wp_wc_orders_meta or wp_postmeta)
+     *
+     * What this DOES NOT DO:
+     * - Partial matches: "B349" won't find "B349445" (exact match only)
+     * - Fuzzy search: Must match exact order number
      *
      * @param string $term Search term (numeric or B/D prefix format).
      *
@@ -1194,9 +1209,29 @@ class KISS_Woo_COS_Search {
     public function search_orders_by_number( $term ) {
         $t0 = microtime( true );
 
+        // Initialize debug tracking
+        $this->last_lookup_debug = array(
+            'function'       => 'search_orders_by_number',
+            'term'           => $term,
+            'parsed'         => null,
+            'fast_path'      => null,
+            'meta_lookup'    => null,
+            'result'         => 'not_found',
+            'elapsed_ms'     => 0,
+            'trace'          => array(),
+        );
+
+        $this->last_lookup_debug['trace'][] = 'Starting search_orders_by_number';
+
         // Parse term
         $parsed = $this->parse_order_term( $term );
+        $this->last_lookup_debug['parsed'] = $parsed;
+        $this->last_lookup_debug['trace'][] = 'Parsed term: ' . ( $parsed ? json_encode( $parsed ) : 'null' );
+
         if ( ! $parsed ) {
+            $this->last_lookup_debug['result'] = 'not_order_like';
+            $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+            $this->last_lookup_debug['trace'][] = 'Not an order-like term - returning empty';
             $this->debug_log(
                 'search_orders_by_number_skip',
                 array(
@@ -1207,49 +1242,535 @@ class KISS_Woo_COS_Search {
             return array(); // Not an order number format
         }
 
-        // Direct ID lookup (GUARANTEED < 20ms)
-        $order = wc_get_order( $parsed['id'] );
-        if ( ! $order || ! is_a( $order, 'WC_Order' ) ) {
-            $this->debug_log(
-                'search_orders_by_number_not_found',
-                array(
-                    'term'       => $term,
-                    'parsed_id'  => $parsed['id'],
-                    'elapsed_ms' => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
-                )
-            );
-            return array(); // Order doesn't exist
-        }
+        $expected_normalized = strtoupper( trim( ltrim( $parsed['expected_number'], '#' ) ) );
 
-        // Verify order number matches expected format (UX validation) - only if prefix was used
-        if ( $parsed['prefix'] ) {
+        // STEP 1: Try direct ID lookup (FAST PATH - < 20ms)
+        $this->last_lookup_debug['trace'][] = 'Attempting fast path: wc_get_order(' . $parsed['id'] . ')';
+        $order = wc_get_order( $parsed['id'] );
+
+        $this->last_lookup_debug['fast_path'] = array(
+            'tried'               => true,
+            'order_id'            => $parsed['id'],
+            'order_exists'        => ( $order && is_a( $order, 'WC_Order' ) ),
+            'expected_normalized' => $expected_normalized,
+        );
+
+        $this->last_lookup_debug['trace'][] = 'Fast path order exists: ' . ( $order ? 'YES' : 'NO' );
+
+        if ( $order && is_a( $order, 'WC_Order' ) ) {
+            // Verify order number matches input to prevent wrong order redirect
             $actual_number = $order->get_order_number();
-            if ( strtoupper( $actual_number ) !== $parsed['expected_number'] ) {
-                // ID exists but order number doesn't match
-                // Example: User searched "B349445" but order #349445 displays as "D349445"
+            $actual_normalized = strtoupper( trim( ltrim( $actual_number, '#' ) ) );
+
+            $this->last_lookup_debug['fast_path']['actual_number'] = $actual_number;
+            $this->last_lookup_debug['fast_path']['actual_normalized'] = $actual_normalized;
+            $this->last_lookup_debug['fast_path']['match'] = ( $actual_normalized === $expected_normalized );
+
+            $this->last_lookup_debug['trace'][] = 'Fast path comparison: expected="' . $expected_normalized . '" actual="' . $actual_normalized . '" match=' . ( $actual_normalized === $expected_normalized ? 'YES' : 'NO' );
+
+            if ( $actual_normalized === $expected_normalized ) {
+                // SUCCESS - Fast path matched!
+                $this->last_lookup_debug['trace'][] = 'FAST PATH SUCCESS - Returning order';
+                $result = array( $this->format_order_for_output( $order ) );
+
+                $this->last_lookup_debug['result'] = 'found_fast_path';
+                $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+
                 $this->debug_log(
-                    'search_orders_by_number_mismatch',
+                    'search_orders_by_number_success_fast_path',
                     array(
-                        'term'            => $term,
-                        'parsed_id'       => $parsed['id'],
-                        'expected_number' => $parsed['expected_number'],
-                        'actual_number'   => $actual_number,
-                        'elapsed_ms'      => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+                        'term'       => $term,
+                        'order_id'   => $parsed['id'],
+                        'method'     => 'direct_id_lookup',
+                        'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
                     )
                 );
-                return array(); // Mismatch - don't show wrong order
+
+                return $result;
+            }
+
+            // Order exists but number doesn't match - will try meta lookup
+            $this->last_lookup_debug['trace'][] = 'Fast path mismatch - trying meta lookup';
+            $this->debug_log(
+                'search_orders_by_number_mismatch_trying_meta',
+                array(
+                    'term'                => $term,
+                    'parsed_id'           => $parsed['id'],
+                    'expected_normalized' => $expected_normalized,
+                    'actual_normalized'   => $actual_normalized,
+                )
+            );
+        } else {
+            $this->last_lookup_debug['trace'][] = 'Fast path failed - order does not exist with ID ' . $parsed['id'];
+        }
+
+        // STEP 2: Fallback to meta-based search for sequential order number plugins
+        // This handles cases like SkyVerge Sequential Order Numbers where order number ≠ order ID
+        // Example: Order #B331580 might have ID 123456, stored in _order_number meta
+        $this->last_lookup_debug['trace'][] = 'Calling search_order_by_meta_number with: ' . $expected_normalized;
+        $order_by_meta = $this->search_order_by_meta_number( $expected_normalized, $t0 );
+        $this->last_lookup_debug['trace'][] = 'search_order_by_meta_number returned: ' . ( empty( $order_by_meta ) ? 'EMPTY' : 'ORDER FOUND' );
+        if ( ! empty( $order_by_meta ) ) {
+            $this->last_lookup_debug['result'] = 'found_meta_lookup';
+            $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+            $this->last_lookup_debug['trace'][] = 'RETURNING ORDER FROM META LOOKUP';
+            return $order_by_meta;
+        }
+
+        // No match found via either method
+        $this->last_lookup_debug['trace'][] = 'NO MATCH FOUND - Returning empty array';
+        $this->last_lookup_debug['result'] = 'not_found';
+        $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+
+        $this->debug_log(
+            'search_orders_by_number_not_found',
+            array(
+                'term'       => $term,
+                'parsed_id'  => $parsed['id'],
+                'expected'   => $expected_normalized,
+                'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
+            )
+        );
+
+        return array();
+
+    }
+
+    /**
+     * Search for order by meta-stored order number (fallback for sequential order plugins).
+     *
+     * This handles plugins like SkyVerge Sequential Order Numbers that store the order number
+     * in the _order_number meta field, where order number ≠ order ID.
+     *
+     * Strategy:
+     * 1. Try SkyVerge plugin's helper function (if available)
+     * 2. Fall back to direct meta query (for other sequential order plugins)
+     *
+     * Performance: ~50-150ms (meta query, slower than direct ID lookup but necessary)
+     *
+     * @param string $order_number Normalized order number (e.g., "B331580").
+     * @param float  $t0           Start time for logging.
+     *
+     * @return array Array with single order or empty.
+     */
+    protected function search_order_by_meta_number( $order_number, $t0 ) {
+        global $wpdb;
+
+        // Initialize meta lookup debug tracking
+        $this->last_lookup_debug['meta_lookup'] = array(
+            'tried'        => true,
+            'order_number' => $order_number,
+            'trace'        => array(),
+        );
+
+        $this->last_lookup_debug['trace'][] = 'Entering search_order_by_meta_number with order_number: ' . $order_number;
+
+        $order_id = null;
+
+        // Try multiple formats because sequential plugins vary in storage.
+        $formats_to_try = array(
+            'normalized'   => (string) $order_number,                 // e.g., "B331580" or "331580"
+            'with_hash'    => '#' . (string) $order_number,           // e.g., "#B331580"
+            'numeric_only' => ltrim( (string) $order_number, 'BD' ),  // e.g., "331580" (best-effort)
+        );
+
+        // If digits-only, also try applying allowed prefixes (B/D by default).
+        if ( ctype_digit( (string) $order_number ) ) {
+            $allowed_prefixes = apply_filters( 'kiss_woo_order_search_prefixes', array( 'B', 'D' ) );
+            $allowed_prefixes = array_values( array_filter( array_map( 'strval', (array) $allowed_prefixes ) ) );
+            foreach ( $allowed_prefixes as $prefix ) {
+                $prefix = strtoupper( trim( $prefix ) );
+                if ( '' === $prefix ) {
+                    continue;
+                }
+                $formats_to_try[ 'prefixed_' . $prefix ] = $prefix . (string) $order_number;     // e.g., "B331580"
+                $formats_to_try[ 'hash_prefixed_' . $prefix ] = '#' . $prefix . (string) $order_number; // e.g., "#B331580"
             }
         }
 
-        // Success - format and return
+        $formats_to_try = array_map( 'strval', $formats_to_try );
+        $formats_to_try = array_filter( $formats_to_try, static function( $v ) {
+            return '' !== trim( (string) $v );
+        } );
+
+        // STRATEGY 1: Try SkyVerge Sequential Order Numbers plugin helper API if present.
+        // Different SkyVerge variants expose different global helpers.
+        $skyverge_candidates = array();
+        if ( function_exists( 'wc_sequential_order_numbers' ) ) {
+            $skyverge_candidates['wc_sequential_order_numbers'] = wc_sequential_order_numbers();
+        }
+        if ( function_exists( 'wc_sequential_order_numbers_pro' ) ) {
+            $skyverge_candidates['wc_sequential_order_numbers_pro'] = wc_sequential_order_numbers_pro();
+        }
+        if ( function_exists( 'wc_seq_order_number_pro' ) ) {
+            $skyverge_candidates['wc_seq_order_number_pro'] = wc_seq_order_number_pro();
+        }
+
+        $this->last_lookup_debug['meta_lookup']['skyverge_candidates'] = array_keys( $skyverge_candidates );
+
+        if ( ! empty( $skyverge_candidates ) ) {
+            $this->last_lookup_debug['meta_lookup']['skyverge_available'] = true;
+            $this->last_lookup_debug['meta_lookup']['skyverge_formats_tried'] = array();
+
+            $normalize_skyverge_result = static function( $result ) {
+                if ( is_numeric( $result ) ) {
+                    return (int) $result;
+                }
+                if ( is_object( $result ) ) {
+                    if ( is_a( $result, 'WC_Order' ) && method_exists( $result, 'get_id' ) ) {
+                        return (int) $result->get_id();
+                    }
+                    if ( $result instanceof WP_Post && isset( $result->ID ) ) {
+                        return (int) $result->ID;
+                    }
+                    if ( method_exists( $result, 'get_id' ) ) {
+                        $maybe = $result->get_id();
+                        if ( is_numeric( $maybe ) ) {
+                            return (int) $maybe;
+                        }
+                    }
+                }
+                if ( is_string( $result ) && preg_match( '/^\d+$/', $result ) ) {
+                    return (int) $result;
+                }
+                return 0;
+            };
+
+            $skyverge_method_candidates = array(
+                'find_order_by_order_number',
+                'get_order_id_by_order_number',
+                'get_order_id_by_order_number_formatted',
+                'get_order_id_from_order_number',
+                'get_order_id',
+            );
+
+            foreach ( $skyverge_candidates as $candidate_name => $candidate_obj ) {
+                if ( ! $candidate_obj || ! is_object( $candidate_obj ) ) {
+                    continue;
+                }
+
+                $this->last_lookup_debug['meta_lookup']['skyverge_candidate_class'][ $candidate_name ] = get_class( $candidate_obj );
+
+                foreach ( $skyverge_method_candidates as $method_name ) {
+                    if ( ! method_exists( $candidate_obj, $method_name ) ) {
+                        continue;
+                    }
+
+                    foreach ( $formats_to_try as $format_name => $format_value ) {
+                        try {
+                            $this->last_lookup_debug['trace'][] = "Trying {$candidate_name}::{$method_name} ({$format_name}): {$format_value}";
+
+                            // Some implementations may expect an int; pass through as string for safety.
+                            $raw = $candidate_obj->{$method_name}( $format_value );
+                            $normalized = $normalize_skyverge_result( $raw );
+
+                            $this->last_lookup_debug['meta_lookup']['skyverge_formats_tried'][ $candidate_name ][ $method_name ][ $format_name ] = array(
+                                'input'      => $format_value,
+                                'raw_type'   => is_object( $raw ) ? get_class( $raw ) : gettype( $raw ),
+                                'normalized' => $normalized ? $normalized : 'not_found',
+                            );
+
+                            if ( $normalized ) {
+                                $order_id = $normalized;
+                                $this->last_lookup_debug['meta_lookup']['skyverge_result'] = $order_id;
+                                $this->last_lookup_debug['meta_lookup']['skyverge_winning_candidate'] = $candidate_name;
+                                $this->last_lookup_debug['meta_lookup']['skyverge_winning_method'] = $method_name;
+                                $this->last_lookup_debug['meta_lookup']['skyverge_winning_format'] = $format_name;
+                                $this->last_lookup_debug['trace'][] = "SkyVerge SUCCESS via {$candidate_name}::{$method_name} ({$format_name}) => order_id={$order_id}";
+                                break 3;
+                            }
+                        } catch ( Throwable $e ) {
+                            $this->last_lookup_debug['meta_lookup']['skyverge_formats_tried'][ $candidate_name ][ $method_name ][ $format_name ] = array(
+                                'input' => $format_value,
+                                'error' => $e->getMessage(),
+                            );
+                            $this->last_lookup_debug['trace'][] = "SkyVerge error via {$candidate_name}::{$method_name} ({$format_name}): " . $e->getMessage();
+                        }
+                    }
+                }
+            }
+
+            if ( ! $order_id ) {
+                $this->last_lookup_debug['meta_lookup']['skyverge_result'] = 'not_found_any_candidate_or_format';
+                $this->last_lookup_debug['trace'][] = 'SkyVerge API present but returned not_found for all candidates/formats.';
+            }
+        } else {
+            $this->last_lookup_debug['meta_lookup']['skyverge_available'] = false;
+            $this->last_lookup_debug['trace'][] = 'SkyVerge helper API not found.';
+        }
+
+        // STRATEGY 2: Fall back to direct meta query (for other sequential order plugins)
+        if ( ! $order_id ) {
+            $this->last_lookup_debug['trace'][] = 'No SkyVerge result - trying direct meta query';
+            // Check if HPOS is enabled
+            $use_hpos = false;
+            try {
+                if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                    method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                    \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+                    $use_hpos = true;
+                }
+            } catch ( Throwable $e ) {
+                $use_hpos = false;
+            }
+
+            $this->last_lookup_debug['meta_lookup']['use_hpos'] = $use_hpos;
+            $this->last_lookup_debug['trace'][] = 'HPOS enabled: ' . ( $use_hpos ? 'YES' : 'NO' );
+
+            $meta_table = $use_hpos ? ( $wpdb->prefix . 'wc_orders_meta' ) : $wpdb->postmeta;
+            $id_col     = $use_hpos ? 'order_id' : 'post_id';
+
+            $this->last_lookup_debug['meta_lookup']['table'] = $meta_table;
+
+            // Common meta keys used by sequential order number plugins.
+            $meta_keys = apply_filters(
+                'kiss_woo_order_search_meta_keys',
+                array(
+                    '_order_number',
+                    '_order_number_formatted',
+                    '_wc_seq_order_number',
+                    '_wc_seq_order_number_formatted',
+                )
+            );
+            $meta_keys = array_values( array_filter( array_map( 'strval', (array) $meta_keys ) ) );
+
+            $this->last_lookup_debug['meta_lookup']['meta_keys_tried'] = $meta_keys;
+            $this->last_lookup_debug['meta_lookup']['values_tried'] = array_values( $formats_to_try );
+            $this->last_lookup_debug['meta_lookup']['queries'] = array();
+
+            foreach ( $meta_keys as $meta_key ) {
+                foreach ( $formats_to_try as $format_name => $format_value ) {
+                    $format_value = (string) $format_value;
+                    if ( '' === $format_value ) {
+                        continue;
+                    }
+
+                    $sql = $wpdb->prepare(
+                        "SELECT {$id_col}
+                         FROM {$meta_table}
+                         WHERE meta_key = %s
+                           AND meta_value = %s
+                         LIMIT 1",
+                        $meta_key,
+                        $format_value
+                    );
+
+                    $this->last_lookup_debug['meta_lookup']['queries'][] = array(
+                        'meta_key' => $meta_key,
+                        'format'   => $format_name,
+                        'value'    => $format_value,
+                    );
+
+                    $this->last_lookup_debug['trace'][] = "Meta query: key={$meta_key} value({$format_name})={$format_value}";
+
+                    $found = $wpdb->get_var( $sql );
+                    if ( $found ) {
+                        $order_id = $found;
+                        $this->last_lookup_debug['meta_lookup']['sql_result'] = $order_id;
+                        $this->last_lookup_debug['meta_lookup']['winning_meta_key'] = $meta_key;
+                        $this->last_lookup_debug['meta_lookup']['winning_value_format'] = $format_name;
+                        $this->last_lookup_debug['trace'][] = 'Meta lookup SUCCESS => order_id=' . $order_id;
+                        break 2;
+                    }
+                }
+            }
+
+            if ( ! $order_id ) {
+                $this->last_lookup_debug['meta_lookup']['sql_result'] = 'not_found';
+                $this->last_lookup_debug['trace'][] = 'Meta lookup: no rows matched any key/value variant.';
+            }
+
+            // STRATEGY 3: Last-resort WooCommerce meta query (handles HPOS/postmeta automatically).
+            if ( ! $order_id && function_exists( 'wc_get_orders' ) && function_exists( 'wc_get_order_statuses' ) ) {
+                $this->last_lookup_debug['trace'][] = 'No SQL meta result - trying wc_get_orders meta query fallback';
+                $this->last_lookup_debug['meta_lookup']['wc_meta_fallback_tried'] = true;
+
+                try {
+                    $statuses = array_keys( wc_get_order_statuses() );
+                    foreach ( $meta_keys as $meta_key ) {
+                        foreach ( $formats_to_try as $format_name => $format_value ) {
+                            $format_value = (string) $format_value;
+                            if ( '' === $format_value ) {
+                                continue;
+                            }
+
+                            $this->last_lookup_debug['trace'][] = "wc_get_orders meta: key={$meta_key} value({$format_name})={$format_value}";
+                            $ids = wc_get_orders(
+                                array(
+                                    'limit'        => 1,
+                                    'return'       => 'ids',
+                                    'type'         => 'shop_order',
+                                    'status'       => $statuses,
+                                    'meta_key'     => $meta_key,
+                                    'meta_value'   => $format_value,
+                                    'meta_compare' => '=',
+                                )
+                            );
+
+                            if ( ! empty( $ids ) ) {
+                                $order_id = (int) $ids[0];
+                                $this->last_lookup_debug['meta_lookup']['wc_meta_fallback_result'] = $order_id;
+                                $this->last_lookup_debug['meta_lookup']['wc_meta_fallback_winning_meta_key'] = $meta_key;
+                                $this->last_lookup_debug['meta_lookup']['wc_meta_fallback_winning_value_format'] = $format_name;
+                                $this->last_lookup_debug['trace'][] = 'wc_get_orders meta fallback SUCCESS => order_id=' . $order_id;
+                                break 2;
+                            }
+                        }
+                    }
+
+                    if ( ! $order_id ) {
+                        $this->last_lookup_debug['meta_lookup']['wc_meta_fallback_result'] = 'not_found';
+                        $this->last_lookup_debug['trace'][] = 'wc_get_orders meta fallback: no rows matched any key/value variant.';
+                    }
+                } catch ( Throwable $e ) {
+                    $this->last_lookup_debug['meta_lookup']['wc_meta_fallback_error'] = $e->getMessage();
+                    $this->last_lookup_debug['trace'][] = 'wc_get_orders meta fallback error: ' . $e->getMessage();
+                }
+            }
+
+            // STRATEGY 4: Last-resort recent-order scan using get_order_number() (plugin-agnostic).
+            // Useful when sequential plugins compute numbers dynamically or store them outside postmeta.
+            if ( ! $order_id && function_exists( 'wc_get_orders' ) && function_exists( 'wc_get_order_statuses' ) ) {
+                $this->last_lookup_debug['trace'][] = 'No meta result - trying recent-order get_order_number() scan';
+                $this->last_lookup_debug['meta_lookup']['recent_scan_tried'] = true;
+
+                $acceptable_numbers = array();
+                foreach ( $formats_to_try as $v ) {
+                    $acceptable_numbers[] = strtoupper( trim( ltrim( (string) $v, '#' ) ) );
+                }
+                $acceptable_numbers[] = strtoupper( trim( (string) $order_number ) );
+                $acceptable_numbers = array_values( array_unique( array_filter( $acceptable_numbers ) ) );
+                $this->last_lookup_debug['meta_lookup']['acceptable_numbers'] = $acceptable_numbers;
+
+                $scan_limit = (int) apply_filters( 'kiss_woo_order_search_recent_scan_limit', 200 );
+                if ( $scan_limit < 1 ) {
+                    $scan_limit = 1;
+                }
+
+                try {
+                    $statuses = array_keys( wc_get_order_statuses() );
+                    $recent_ids = wc_get_orders(
+                        array(
+                            'limit'   => $scan_limit,
+                            'return'  => 'ids',
+                            'type'    => 'shop_order',
+                            'status'  => $statuses,
+                            'orderby' => 'date',
+                            'order'   => 'DESC',
+                        )
+                    );
+
+                    $this->last_lookup_debug['meta_lookup']['recent_scan_limit'] = $scan_limit;
+                    $this->last_lookup_debug['meta_lookup']['recent_scan_ids_count'] = is_array( $recent_ids ) ? count( $recent_ids ) : 0;
+
+                    $checked = 0;
+                    foreach ( (array) $recent_ids as $candidate_id ) {
+                        $candidate_id = (int) $candidate_id;
+                        if ( $candidate_id < 1 ) {
+                            continue;
+                        }
+                        $checked++;
+
+                        $candidate_order = wc_get_order( $candidate_id );
+                        if ( ! $candidate_order || ! is_a( $candidate_order, 'WC_Order' ) ) {
+                            continue;
+                        }
+
+                        $candidate_number = $candidate_order->get_order_number();
+                        $candidate_normalized = strtoupper( trim( ltrim( (string) $candidate_number, '#' ) ) );
+
+                        if ( in_array( $candidate_normalized, $acceptable_numbers, true ) ) {
+                            $order_id = $candidate_id;
+                            $this->last_lookup_debug['meta_lookup']['recent_scan_checked'] = $checked;
+                            $this->last_lookup_debug['meta_lookup']['recent_scan_match_number'] = $candidate_number;
+                            $this->last_lookup_debug['meta_lookup']['recent_scan_match_normalized'] = $candidate_normalized;
+                            $this->last_lookup_debug['trace'][] = 'Recent scan SUCCESS => order_id=' . $order_id;
+                            break;
+                        }
+                    }
+
+                    if ( ! $order_id ) {
+                        $this->last_lookup_debug['meta_lookup']['recent_scan_checked'] = $checked;
+                        $this->last_lookup_debug['trace'][] = 'Recent scan: no matching order numbers found in recent orders.';
+                    }
+                } catch ( Throwable $e ) {
+                    $this->last_lookup_debug['meta_lookup']['recent_scan_error'] = $e->getMessage();
+                    $this->last_lookup_debug['trace'][] = 'Recent scan error: ' . $e->getMessage();
+                }
+            }
+        }
+
+        $this->last_lookup_debug['meta_lookup']['found_order_id'] = $order_id;
+
+        if ( ! $order_id ) {
+            $this->last_lookup_debug['trace'][] = 'META LOOKUP FAILED - No order_id found';
+            $this->last_lookup_debug['meta_lookup']['result'] = 'not_found';
+            $this->debug_log(
+                'search_order_by_meta_not_found',
+                array(
+                    'order_number' => $order_number,
+                    'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+                )
+            );
+            return array();
+        }
+
+        // Load the order
+        $this->last_lookup_debug['trace'][] = 'Loading order with ID: ' . $order_id;
+        $order = wc_get_order( $order_id );
+        $this->last_lookup_debug['meta_lookup']['order_loaded'] = ( $order && is_a( $order, 'WC_Order' ) );
+        $this->last_lookup_debug['trace'][] = 'Order loaded: ' . ( $order ? 'YES' : 'NO' );
+
+        if ( ! $order || ! is_a( $order, 'WC_Order' ) ) {
+            $this->last_lookup_debug['trace'][] = 'ORDER LOAD FAILED';
+            $this->last_lookup_debug['meta_lookup']['result'] = 'order_load_failed';
+            return array();
+        }
+
+        // Double-check the order number matches (paranoid validation)
+        $actual_number = $order->get_order_number();
+        $actual_normalized = strtoupper( trim( ltrim( $actual_number, '#' ) ) );
+
+        $this->last_lookup_debug['meta_lookup']['actual_number'] = $actual_number;
+        $this->last_lookup_debug['meta_lookup']['actual_normalized'] = $actual_normalized;
+        $acceptable_numbers = array();
+        foreach ( $formats_to_try as $v ) {
+            $acceptable_numbers[] = strtoupper( trim( ltrim( (string) $v, '#' ) ) );
+        }
+        $acceptable_numbers[] = strtoupper( trim( (string) $order_number ) );
+        $acceptable_numbers = array_values( array_unique( array_filter( $acceptable_numbers ) ) );
+
+        $this->last_lookup_debug['meta_lookup']['acceptable_numbers'] = $acceptable_numbers;
+        $this->last_lookup_debug['meta_lookup']['match'] = in_array( $actual_normalized, $acceptable_numbers, true );
+
+        $this->last_lookup_debug['trace'][] = 'Validating order number: expected="' . $order_number . '" actual="' . $actual_normalized . '" match=' . ( in_array( $actual_normalized, $acceptable_numbers, true ) ? 'YES' : 'NO' );
+
+        if ( ! in_array( $actual_normalized, $acceptable_numbers, true ) ) {
+            $this->last_lookup_debug['trace'][] = 'ORDER NUMBER MISMATCH - Returning empty';
+            $this->last_lookup_debug['meta_lookup']['result'] = 'number_mismatch';
+            $this->debug_log(
+                'search_order_by_meta_mismatch',
+                array(
+                    'expected'   => $order_number,
+                    'actual'     => $actual_normalized,
+                    'order_id'   => $order_id,
+                )
+            );
+            return array();
+        }
+
+        // SUCCESS - Meta lookup matched!
+        $this->last_lookup_debug['trace'][] = 'META LOOKUP SUCCESS - Returning order';
+        $this->last_lookup_debug['meta_lookup']['result'] = 'success';
         $result = array( $this->format_order_for_output( $order ) );
 
         $this->debug_log(
-            'search_orders_by_number_success',
+            'search_orders_by_number_success_meta_lookup',
             array(
-                'term'       => $term,
-                'order_id'   => $parsed['id'],
-                'elapsed_ms' => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+                'order_number' => $order_number,
+                'order_id'     => $order_id,
+                'method'       => 'meta_lookup',
+                'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
             )
         );
 

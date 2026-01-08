@@ -134,7 +134,7 @@ class KISS_Woo_COS_Admin_Page {
                 <input type="text"
                        id="kiss-cos-search-input"
                        class="regular-text"
-                       placeholder="<?php esc_attr_e( 'Type email or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
+                       placeholder="<?php esc_attr_e( 'Type email, name, or order # and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
                 <button type="submit" class="button button-primary">
                     <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
                 </button>
@@ -142,11 +142,83 @@ class KISS_Woo_COS_Admin_Page {
             </form>
             <div id="kiss-cos-search-time" class="kiss-cos-search-time"></div>
 
-            <div id="kiss-cos-results" class="kiss-cos-results">
-                <!-- Results injected by JS -->
+            <div class="kiss-cos-layout">
+                <div class="kiss-cos-layout__main">
+                    <div id="kiss-cos-results" class="kiss-cos-results">
+                        <!-- Results injected by JS -->
+                    </div>
+                </div>
+
+                <aside id="kiss-cos-debug-panel" class="kiss-cos-debug" hidden>
+                    <button type="button" id="kiss-cos-debug-toggle" class="kiss-cos-debug__header" aria-expanded="false">
+                        <span class="kiss-cos-debug__caret" aria-hidden="true">▸</span>
+                        <span class="kiss-cos-debug__title"><?php esc_html_e( 'Debug', 'kiss-woo-customer-order-search' ); ?></span>
+                    </button>
+                    <div id="kiss-cos-debug-body" class="kiss-cos-debug__body" hidden>
+                        <pre id="kiss-cos-debug-content" class="kiss-cos-debug__content"></pre>
+                    </div>
+                </aside>
             </div>
 
             <style>
+                .kiss-cos-layout {
+                    display: flex;
+                    gap: 16px;
+                    align-items: flex-start;
+                }
+                .kiss-cos-layout__main {
+                    flex: 1 1 auto;
+                    min-width: 0;
+                }
+                .kiss-cos-debug {
+                    width: 360px;
+                    max-width: 40%;
+                    background: #fff;
+                    border: 1px solid #ccd0d4;
+                    border-radius: 4px;
+                    overflow: hidden;
+                }
+                .kiss-cos-debug__header {
+                    width: 100%;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 10px 12px;
+                    background: #f6f7f7;
+                    border: 0;
+                    border-bottom: 1px solid #ccd0d4;
+                    cursor: pointer;
+                    text-align: left;
+                }
+                .kiss-cos-debug__caret {
+                    font-size: 14px;
+                    line-height: 1;
+                }
+                .kiss-cos-debug__body {
+                    padding: 10px 12px;
+                }
+                .kiss-cos-debug__content {
+                    margin: 0;
+                    max-height: 70vh;
+                    overflow: auto;
+                    background: #fff;
+                    font-size: 12px;
+                    line-height: 1.35;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                }
+
+                @media (max-width: 1100px) {
+                    .kiss-cos-layout {
+                        display: block;
+                    }
+                    .kiss-cos-debug {
+                        width: auto;
+                        max-width: none;
+                        margin-top: 16px;
+                    }
+                }
+
                 .kiss-cos-wrap .kiss-cos-search-form {
                     margin-top: 15px;
                     margin-bottom: 20px;
