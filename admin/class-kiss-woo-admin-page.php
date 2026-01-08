@@ -139,6 +139,7 @@ class KISS_Woo_COS_Admin_Page {
                 </button>
                 <span id="kiss-cos-search-status" class="kiss-cos-search-status"></span>
             </form>
+            <div id="kiss-cos-search-time" class="kiss-cos-search-time"></div>
 
             <div id="kiss-cos-results" class="kiss-cos-results">
                 <!-- Results injected by JS -->
@@ -155,6 +156,11 @@ class KISS_Woo_COS_Admin_Page {
                 .kiss-cos-search-status {
                     margin-left: 10px;
                     font-style: italic;
+                }
+                .kiss-cos-search-time {
+                    margin-top: 8px;
+                    font-size: 12px;
+                    color: #666;
                 }
                 .kiss-cos-results .kiss-cos-customer {
                     background: #fff;
@@ -224,8 +230,18 @@ class KISS_Woo_COS_Admin_Page {
     public function render_benchmark_page() {
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-benchmark.php';
 
-        $query = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : 'vishal@neochro.me';
-        $results = KISS_Woo_COS_Benchmark::run_tests($query);
+        // Verify nonce if query parameter is present
+        $query = 'vishal@neochro.me'; // Default query
+        $results = null;
+
+        if ( isset( $_GET['q'] ) && isset( $_GET['_wpnonce'] ) ) {
+            if ( wp_verify_nonce( $_GET['_wpnonce'], 'kiss_benchmark_search' ) ) {
+                $query = sanitize_text_field( $_GET['q'] );
+                $results = KISS_Woo_COS_Benchmark::run_tests( $query );
+            } else {
+                wp_die( esc_html__( 'Security check failed. Please try again.', 'kiss-woo-customer-order-search' ) );
+            }
+        }
         ?>
 
         <div class="wrap">
@@ -233,28 +249,33 @@ class KISS_Woo_COS_Admin_Page {
 
             <form method="GET">
                 <input type="hidden" name="page" value="kiss-benchmark">
-                <input type="text" name="q" value="<?php echo esc_attr($query); ?>" placeholder="Enter email to test">
+                <?php wp_nonce_field( 'kiss_benchmark_search', '_wpnonce', false ); ?>
+                <input type="text" name="q" value="<?php echo esc_attr( $query ); ?>" placeholder="Enter email to test">
                 <button class="button button-primary">Run Benchmark</button>
             </form>
 
-            <h2>Results (milliseconds)</h2>
+            <?php if ( $results ) : ?>
+                <h2>Results (milliseconds)</h2>
 
-            <table class="widefat">
-                <thead>
-                    <tr>
-                        <th>Test</th>
-                        <th>Time (ms)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td>WooCommerce Orders Search</td><td><?php echo $results['wc_order_search_ms']; ?></td></tr>
-                    <tr><td>WooCommerce User Search</td><td><?php echo $results['wp_user_search_ms']; ?></td></tr>
-                    <tr><td>KISS Customer Search</td><td><?php echo $results['kiss_customer_search_ms']; ?></td></tr>
-                    <tr><td>KISS Guest Order Search</td><td><?php echo $results['kiss_guest_search_ms']; ?></td></tr>
-                </tbody>
-            </table>
+                <table class="widefat">
+                    <thead>
+                        <tr>
+                            <th>Test</th>
+                            <th>Time (ms)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>WooCommerce Orders Search</td><td><?php echo esc_html( $results['wc_order_search_ms'] ); ?></td></tr>
+                        <tr><td>WooCommerce User Search</td><td><?php echo esc_html( $results['wp_user_search_ms'] ); ?></td></tr>
+                        <tr><td>KISS Customer Search</td><td><?php echo esc_html( $results['kiss_customer_search_ms'] ); ?></td></tr>
+                        <tr><td>KISS Guest Order Search</td><td><?php echo esc_html( $results['kiss_guest_search_ms'] ); ?></td></tr>
+                    </tbody>
+                </table>
 
-            <p><em>Lower = Faster. KISS should be significantly faster due to optimized lookups and pre-filtered queries.</em></p>
+                <p><em>Lower = Faster. KISS should be significantly faster due to optimized lookups and pre-filtered queries.</em></p>
+            <?php else : ?>
+                <p><em>Enter an email address and click "Run Benchmark" to see performance comparison.</em></p>
+            <?php endif; ?>
         </div>
 
         <?php

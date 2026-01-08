@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.0.1' );
+    define( 'KISS_WOO_COS_VERSION', '1.0.2' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -51,6 +51,8 @@ class KISS_Woo_Customer_Order_Search_Plugin {
     private function __construct() {
         // Check WooCommerce.
         add_action( 'plugins_loaded', array( $this, 'maybe_bootstrap' ) );
+        // Add settings link to plugins page.
+        add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), array( $this, 'add_settings_link' ) );
     }
 
     /**
@@ -65,9 +67,15 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         // Include files.
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
+        require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-settings.php';
+        // Floating toolbar integration (admin only).
+        if ( is_admin() ) {
+            require_once KISS_WOO_COS_PATH . 'toolbar.php';
+        }
 
-        // Init admin page.
+        // Init admin page and settings.
         KISS_Woo_COS_Admin_Page::instance();
+        KISS_Woo_COS_Settings::instance();
 
         // Register AJAX handler.
         add_action( 'wp_ajax_kiss_woo_customer_search', array( $this, 'handle_ajax_search' ) );
@@ -87,6 +95,18 @@ class KISS_Woo_Customer_Order_Search_Plugin {
     }
 
     /**
+     * Add settings link to plugin action links.
+     *
+     * @param array $links
+     * @return array
+     */
+    public function add_settings_link( $links ) {
+        $settings_link = '<a href="' . admin_url( 'admin.php?page=kiss-woo-cos-settings' ) . '">' . __( 'Settings', 'kiss-woo-customer-order-search' ) . '</a>';
+        array_unshift( $links, $settings_link );
+        return $links;
+    }
+
+    /**
      * Handle AJAX request for customer & order search.
      */
     public function handle_ajax_search() {
@@ -102,15 +122,20 @@ class KISS_Woo_Customer_Order_Search_Plugin {
             wp_send_json_error( array( 'message' => __( 'Please enter at least 2 characters.', 'kiss-woo-customer-order-search' ) ) );
         }
 
+        $t_start = microtime( true );
+
         $search = new KISS_Woo_COS_Search();
 
         $customers    = $search->search_customers( $term );
         $guest_orders = $search->search_guest_orders_by_email( $term );
 
+        $elapsed_seconds = round( microtime( true ) - $t_start, 2 );
+
         wp_send_json_success(
             array(
                 'customers'    => $customers,
                 'guest_orders' => $guest_orders,
+                'search_time'  => $elapsed_seconds,
             )
         );
     }
