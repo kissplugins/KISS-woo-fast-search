@@ -115,15 +115,12 @@ class KISS_Woo_COS_Floating_Search_Bar {
                 margin-left: auto;
             }
             
-            .floating-search-toolbar__label {
-                color: #c3c4c7;
+            .floating-search-toolbar__speed-label {
+                color:rgb(240, 240, 241);
                 font-size: 13px;
-                font-weight: 400;
-                padding: 0 12px;
-                height: 100%;
-                display: flex;
-                align-items: center;
-                border-right: 1px solid #333;
+                font-weight: 600;
+                margin-right: 10px;
+                white-space: nowrap;
             }
             
             /* Search input styled like WP admin bar */
@@ -158,7 +155,7 @@ class KISS_Woo_COS_Floating_Search_Bar {
             .floating-search-submit {
                 background: transparent;
                 border: none;
-                color: #c3c4c7;
+                color:rgb(240, 240, 241);
                 cursor: pointer;
                 font-size: 13px;
                 height: 32px;
@@ -177,10 +174,14 @@ class KISS_Woo_COS_Floating_Search_Bar {
                 .floating-search-submit {
                     height: 46px;
                 }
-                
+
                 .floating-search-input {
                     height: 34px;
                     width: 150px;
+                }
+
+                .floating-search-toolbar__speed-label {
+                    display: none;
                 }
             }
         </style>
@@ -254,23 +255,20 @@ class KISS_Woo_COS_Floating_Search_Bar {
         }
         ?>
         <div id="floating-search-toolbar">
-            <div class="floating-search-toolbar__section">
-                <span class="floating-search-toolbar__label">
-                    <?php esc_html_e( 'KISS Search', 'kiss-woo-customer-order-search' ); ?>
-                </span>
-            </div>
-            
             <div class="floating-search-toolbar__section floating-search-toolbar__section--search">
-                <input 
-                    type="text" 
-                    id="floating-search-input" 
+                <span class="floating-search-toolbar__speed-label">
+                    <?php esc_html_e( 'Ultra Fast Search (3-4x faster)', 'kiss-woo-customer-order-search' ); ?>
+                </span>
+                <input
+                    type="text"
+                    id="floating-search-input"
                     class="floating-search-input"
                     placeholder="<?php esc_attr_e( 'Search email or name…', 'kiss-woo-customer-order-search' ); ?>"
                     autocomplete="off"
                 />
-                <button 
-                    type="button" 
-                    id="floating-search-submit" 
+                <button
+                    type="button"
+                    id="floating-search-submit"
                     class="floating-search-submit"
                 >
                     <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
