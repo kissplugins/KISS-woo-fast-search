@@ -57,10 +57,39 @@ class SearchTest extends \KISS_Test_Case {
 
     protected function setUp(): void {
         parent::setUp();
-        $this->search = new Testable_Search();
 
-        // Mock WP_User_Query to return controlled test data.
-        // This is set up fresh for each test.
+        // Stub WordPress functions used by search.
+        Functions\stubs([
+            'get_option' => function( $option, $default = false ) {
+                // Return sensible defaults for WooCommerce options.
+                if ( $option === 'woocommerce_custom_orders_table_enabled' ) {
+                    return 'yes'; // Enable HPOS by default.
+                }
+                return $default;
+            },
+            'esc_html' => function( $text ) {
+                return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+            },
+            'esc_url' => function( $url ) {
+                return htmlspecialchars( (string) $url, ENT_QUOTES, 'UTF-8' );
+            },
+            'admin_url' => function( $path ) {
+                return 'http://example.com/wp-admin/' . $path;
+            },
+            'human_time_diff' => function( $from, $to = null ) {
+                $to = $to ?? time();
+                $diff = abs( $to - $from );
+                if ( $diff < 60 ) {
+                    return $diff . ' seconds';
+                } elseif ( $diff < 3600 ) {
+                    return floor( $diff / 60 ) . ' minutes';
+                } else {
+                    return floor( $diff / 3600 ) . ' hours';
+                }
+            },
+        ]);
+
+        $this->search = new Testable_Search();
     }
 
     protected function tearDown(): void {
@@ -73,12 +102,20 @@ class SearchTest extends \KISS_Test_Case {
     // =========================================================================
 
     public function test_search_customers_returns_empty_array_for_empty_term(): void {
+        // Mock WP_User_Query to return empty results.
+        $user_query_mock = Mockery::mock('overload:WP_User_Query');
+        $user_query_mock->shouldReceive('get_results')->andReturn( [] );
+
         $result = $this->search->search_customers( '' );
         $this->assertIsArray( $result );
         $this->assertEmpty( $result );
     }
 
     public function test_search_customers_returns_empty_array_for_whitespace_term(): void {
+        // Mock WP_User_Query to return empty results.
+        $user_query_mock = Mockery::mock('overload:WP_User_Query');
+        $user_query_mock->shouldReceive('get_results')->andReturn( [] );
+
         $result = $this->search->search_customers( '   ' );
         $this->assertIsArray( $result );
         $this->assertEmpty( $result );

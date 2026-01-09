@@ -19,38 +19,7 @@ class KISS_Woo_COS_Search {
      *
      * @return bool
      */
-    protected function is_debug_enabled() {
-        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) ) {
-            return (bool) KISS_WOO_FAST_SEARCH_DEBUG;
-        }
 
-        return false;
-    }
-
-    /**
-     * Log debug information.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    protected function debug_log( $message, $context = array() ) {
-        if ( ! $this->is_debug_enabled() ) {
-            return;
-        }
-
-        $line = '[KISS_WOO_COS] ' . (string) $message;
-        if ( ! empty( $context ) ) {
-            $encoded = wp_json_encode( $context );
-            if ( $encoded ) {
-                $line .= ' ' . $encoded;
-            }
-        }
-
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( $line );
-    }
 
     /**
      * Find matching customers by email or name.
@@ -163,7 +132,8 @@ class KISS_Woo_COS_Search {
 
         $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
 
-        $this->debug_log(
+        KISS_Woo_Debug_Tracer::log(
+            'Search',
             'search_customers',
             array(
                 'term'          => $term,
@@ -212,14 +182,11 @@ class KISS_Woo_COS_Search {
         }
 
         // Ensure lookup table exists.
-        $table = $wpdb->prefix . 'wc_customer_lookup';
+        $table  = $wpdb->prefix . 'wc_customer_lookup';
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         if ( $exists !== $table ) {
             $this->last_lookup_debug['enabled'] = false;
-            if ( $this->is_debug_enabled() ) {
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
-            }
+            KISS_Woo_Debug_Tracer::log( 'Search', 'wc_customer_lookup_missing', array( 'table' => $table, 'got' => $exists ), 'warn' );
             return array();
         }
 
@@ -258,19 +225,13 @@ class KISS_Woo_COS_Search {
                 $sql = $wpdb->remove_placeholder_escape( $sql );
             }
 
-            if ( $this->is_debug_enabled() ) {
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
-            }
+            KISS_Woo_Debug_Tracer::log( 'Search', 'lookup_query', array( 'mode' => 'name_pair_prefix' ), 'debug' );
 
-            $t_start = microtime( true );
-            $ids = $wpdb->get_col( $sql );
+            $t_start   = microtime( true );
+            $ids       = $wpdb->get_col( $sql );
             $t_elapsed = round( ( microtime( true ) - $t_start ) * 1000, 2 );
 
-            if ( $this->is_debug_enabled() ) {
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-            }
+            KISS_Woo_Debug_Tracer::log( 'Search', 'lookup_result', array( 'mode' => 'name_pair_prefix', 'count' => is_array( $ids ) ? count( $ids ) : 0, 'elapsed_ms' => $t_elapsed ), 'debug' );
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
@@ -404,32 +365,20 @@ class KISS_Woo_COS_Search {
 
         $t_counts_start = microtime( true );
 
-        if ( $this->is_debug_enabled() ) {
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-        }
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_start', array( 'user_ids' => $user_ids ), 'debug' );
 
         try {
-            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
-                method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
-                \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+            if ( class_exists( 'KISS_Woo_Utils' ) && KISS_Woo_Utils::is_hpos_enabled() ) {
                 $counts = $this->get_order_counts_hpos( $user_ids );
-                if ( $this->is_debug_enabled() ) {
-                    // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                    error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-                }
+                KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_done', array( 'mode' => 'hpos', 'elapsed_ms' => round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) ), 'debug' );
                 return $counts + $order_counts;
             }
         } catch ( Exception $e ) {
-            // Fall back to legacy logic on failure.
+            KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_exception', array( 'message' => $e->getMessage() ), 'warn' );
         }
 
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
-
-        if ( $this->is_debug_enabled() ) {
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-        }
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_done', array( 'mode' => 'legacy', 'elapsed_ms' => round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) ), 'debug' );
 
         return $legacy_counts + $order_counts;
     }
@@ -572,7 +521,7 @@ class KISS_Woo_COS_Search {
      * Fetch order data for multiple order IDs via direct SQL.
      *
      * IMPORTANT: This bypasses wc_get_orders() to avoid expensive hooks/plugins.
-     * Returns data in the same format as format_order_for_output().
+     * Returns data formatted via KISS_Woo_Order_Formatter::format_from_raw().
      *
      * @param int[] $order_ids Order IDs to fetch.
      *
@@ -590,16 +539,7 @@ class KISS_Woo_COS_Search {
         $results = array();
 
         // Check if HPOS is enabled.
-        $use_hpos = false;
-        try {
-            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
-                method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
-                \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
-                $use_hpos = true;
-            }
-        } catch ( Exception $e ) {
-            $use_hpos = false;
-        }
+        $use_hpos = ( class_exists( 'KISS_Woo_Utils' ) && KISS_Woo_Utils::is_hpos_enabled() );
 
         if ( $use_hpos ) {
             $results = $this->get_order_data_hpos( $order_ids );
@@ -701,9 +641,9 @@ class KISS_Woo_COS_Search {
             }
         }
 
-        // Format for output.
+        // Format for output using centralized formatter.
         foreach ( $order_data as $oid => $data ) {
-            $results[ $oid ] = $this->format_order_data_for_output( $data );
+            $results[ $oid ] = KISS_Woo_Order_Formatter::format_from_raw( array_merge( $data, array( 'order_number' => (string) $oid ) ) );
         }
 
         return $results;
@@ -815,67 +755,15 @@ class KISS_Woo_COS_Search {
             }
         }
 
-        // Format for output.
+        // Format for output using centralized formatter.
         foreach ( $order_data as $oid => $data ) {
-            $results[ $oid ] = $this->format_order_data_for_output( $data );
+            $results[ $oid ] = KISS_Woo_Order_Formatter::format_from_raw( array_merge( $data, array( 'order_number' => (string) $oid ) ) );
         }
 
         return $results;
     }
 
-    /**
-     * Format raw order data array into output format.
-     *
-     * @param array $data Raw order data with keys: id, status, date_gmt, total, currency, payment, billing_email, shipping.
-     *
-     * @return array Formatted order data for JSON output.
-     */
-    protected function format_order_data_for_output( $data ) {
-        $order_id = (int) $data['id'];
-        $status   = (string) $data['status'];
 
-        // Build admin edit URL.
-        $edit_link = admin_url( 'post.php?post=' . $order_id . '&action=edit' );
-
-        // Format date.
-        $date_formatted = '';
-        if ( ! empty( $data['date_gmt'] ) && '0000-00-00 00:00:00' !== $data['date_gmt'] ) {
-            $timestamp = strtotime( $data['date_gmt'] );
-            if ( $timestamp ) {
-                $date_formatted = date_i18n(
-                    get_option( 'date_format' ) . ' ' . get_option( 'time_format' ),
-                    $timestamp + ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS )
-                );
-            }
-        }
-
-        // Format total with currency.
-        $total_formatted = '';
-        if ( '' !== $data['total'] && function_exists( 'wc_price' ) ) {
-            $total_formatted = wc_price( $data['total'], array( 'currency' => $data['currency'] ) );
-        } elseif ( '' !== $data['total'] ) {
-            $total_formatted = $data['currency'] . ' ' . number_format( (float) $data['total'], 2 );
-        }
-
-        // Get status label.
-        $status_label = $status;
-        if ( function_exists( 'wc_get_order_status_name' ) ) {
-            $status_label = wc_get_order_status_name( $status );
-        }
-
-        return array(
-            'id'            => $order_id,
-            'number'        => (string) $order_id, // Order number is typically the ID unless customized.
-            'status'        => esc_attr( $status ),
-            'status_label'  => esc_html( $status_label ),
-            'total'         => $total_formatted,
-            'date'          => esc_html( $date_formatted ),
-            'payment'       => esc_html( (string) $data['payment'] ),
-            'shipping'      => esc_html( (string) $data['shipping'] ),
-            'view_url'      => esc_url_raw( $edit_link ),
-            'billing_email' => esc_html( (string) $data['billing_email'] ),
-        );
-    }
 
     /**
      * Fetch recent orders for multiple customers in one query.
@@ -904,10 +792,7 @@ class KISS_Woo_COS_Search {
 
         $t_orders_start = microtime( true );
 
-        if ( $this->is_debug_enabled() ) {
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-        }
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_recent_orders_start', array( 'user_ids' => $user_ids ), 'debug' );
 
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
@@ -944,10 +829,7 @@ class KISS_Woo_COS_Search {
         $rows = $wpdb->get_results( $sql );
         $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
-        if ( $this->is_debug_enabled() ) {
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-        }
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_recent_orders_sql_done', array( 'rows' => is_array( $rows ) ? count( $rows ) : 0, 'elapsed_ms' => $t_sql_elapsed ), 'debug' );
 
         if ( empty( $rows ) ) {
             return $results;
@@ -980,10 +862,7 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        if ( $this->is_debug_enabled() ) {
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-        }
+        KISS_Woo_Debug_Tracer::log( 'Search', 'order_hydration_start', array( 'order_ids' => count( $all_order_ids ) ), 'debug' );
 
         // IMPORTANT: Avoid wc_get_orders() - it triggers expensive hooks/plugins on large sites.
         // Use direct SQL to fetch only the fields we need for display.
@@ -991,10 +870,7 @@ class KISS_Woo_COS_Search {
         $order_data = $this->get_order_data_via_sql( $all_order_ids );
         $t_hydrate_elapsed = round( ( microtime( true ) - $t_hydrate_start ) * 1000, 2 );
 
-        if ( $this->is_debug_enabled() ) {
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
-        }
+        KISS_Woo_Debug_Tracer::log( 'Search', 'order_hydration_done', array( 'orders' => is_array( $order_data ) ? count( $order_data ) : 0, 'elapsed_ms' => $t_hydrate_elapsed ), 'debug' );
 
         if ( empty( $order_data ) ) {
             return $results;
@@ -1049,49 +925,12 @@ class KISS_Woo_COS_Search {
             foreach ( $orders as $order ) {
                 /** @var WC_Order $order */
                 if ( 0 === (int) $order->get_customer_id() ) {
-                    $results[] = $this->format_order_for_output( $order );
+                    $results[] = KISS_Woo_Order_Formatter::format( $order );
                 }
             }
         }
 
         return $results;
-    }
-
-    /**
-     * Prepare order data for JSON output.
-     *
-     * @param WC_Order $order
-     *
-     * @return array
-     */
-    protected function format_order_for_output( $order ) {
-        $order_id     = $order->get_id();
-        $status       = $order->get_status();
-        $total        = $order->get_total();
-        $currency     = $order->get_currency();
-        $date_created = $order->get_date_created();
-        $payment      = $order->get_payment_method_title();
-        $shipping     = $order->get_shipping_method();
-
-        // `esc_url()` is for HTML output contexts and will entity-encode `&` as `&#038;`.
-        // This payload is returned as JSON and inserted via JS; it must be a raw URL.
-        $edit_link = get_edit_post_link( $order_id, 'raw' );
-        if ( empty( $edit_link ) ) {
-            $edit_link = admin_url( 'post.php?post=' . (int) $order_id . '&action=edit' );
-        }
-
-        return array(
-            'id'            => (int) $order_id,
-            'number'        => esc_html( $order->get_order_number() ),
-            'status'        => esc_attr( $status ),
-            'status_label'  => esc_html( wc_get_order_status_name( $status ) ),
-            'total'         => wc_price( $total, array( 'currency' => $currency ) ),
-            'date'          => esc_html( $date_created ? $date_created->date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) : '' ),
-            'payment'       => esc_html( $payment ),
-            'shipping'      => esc_html( $shipping ),
-            'view_url'      => esc_url_raw( $edit_link ),
-            'billing_email' => esc_html( $order->get_billing_email() ),
-        );
     }
 
     /**

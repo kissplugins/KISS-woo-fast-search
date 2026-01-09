@@ -18,6 +18,14 @@ class OrderResolverTest extends \KISS_Test_Case {
 
     protected function setUp(): void {
         parent::setUp();
+
+        // Stub wc_seq_order_number_pro to return a mock object that returns null for find_order_by_order_number().
+        // This simulates the plugin being active but not finding any orders.
+        // Tests that need different behavior should override this stub.
+        $seq_plugin_mock = Mockery::mock();
+        $seq_plugin_mock->shouldReceive('find_order_by_order_number')->andReturn( null )->byDefault();
+        Functions\when('wc_seq_order_number_pro')->justReturn( $seq_plugin_mock );
+
         $this->cache    = new \KISS_Woo_Search_Cache();
         $this->resolver = new KISS_Woo_Order_Resolver( $this->cache );
     }

@@ -85,9 +85,10 @@ class KISS_Woo_Self_Test {
      * Render system status section.
      */
     private function render_system_status(): void {
-        $hpos_enabled = class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
-                        \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
-        
+        $hpos_enabled = class_exists( 'KISS_Woo_Utils' )
+            ? KISS_Woo_Utils::is_hpos_enabled()
+            : false;
+
         $seq_pro_active = function_exists( 'wc_seq_order_number_pro' );
         
         ?>
@@ -129,7 +130,6 @@ class KISS_Woo_Self_Test {
                             <span class="status-no">✗ Disabled</span>
                         <?php endif; ?>
                     </td>
-                </tr>
             </table>
         </div>
         <?php
@@ -147,8 +147,9 @@ class KISS_Woo_Self_Test {
         $url_method_2 = get_edit_post_link( $order_id, 'raw' );
         $url_method_3 = admin_url( 'post.php?post=' . $order_id . '&action=edit' );
 
-        $hpos_enabled = class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
-                        \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+        $hpos_enabled = class_exists( 'KISS_Woo_Utils' )
+            ? KISS_Woo_Utils::is_hpos_enabled()
+            : false;
 
         $url_method_4 = $hpos_enabled
             ? admin_url( 'admin.php?page=wc-orders&action=edit&id=' . $order_id )

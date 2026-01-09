@@ -1,12 +1,110 @@
 jQuery(function ($) {
-    // Version check - helps identify if cached JS is being used
-    console.log('🔍 KISS Search JS loaded - Version 1.1.3 (double-escape bug fixed)');
+    // Version check - helps identify if cached JS is being used (debug mode only)
+    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+        console.log('🔍 KISS Search JS loaded - Version 1.2.3 (explicit state machine)');
+    }
 
     var $form   = $('#kiss-cos-search-form');
     var $input  = $('#kiss-cos-search-input');
     var $status = $('#kiss-cos-search-status');
     var $results = $('#kiss-cos-results');
     var $searchTime = $('#kiss-cos-search-time');
+
+    /**
+     * Explicit State Machine for Search UI
+     * Prevents impossible states and ensures consistent UI behavior.
+     */
+    var SearchState = {
+        IDLE: 'idle',
+        SEARCHING: 'searching',
+        SUCCESS: 'success',
+        ERROR: 'error',
+        REDIRECTING: 'redirecting'
+    };
+
+    var currentState = SearchState.IDLE;
+    var stateData = {
+        searchTerm: '',
+        startTime: 0,
+        xhr: null
+    };
+
+    /**
+     * Transition to a new state with validation.
+     * Prevents invalid state transitions and logs them for debugging.
+     */
+    function transitionTo(newState, data) {
+        var validTransitions = {
+            'idle': ['searching'],
+            'searching': ['success', 'error', 'redirecting', 'idle'],
+            'success': ['idle', 'searching'],
+            'error': ['idle', 'searching'],
+            'redirecting': []
+        };
+
+        if (!validTransitions[currentState] || validTransitions[currentState].indexOf(newState) === -1) {
+            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                console.warn('⚠️ Invalid state transition:', currentState, '→', newState);
+            }
+            return false;
+        }
+
+        if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+            console.log('🔄 State transition:', currentState, '→', newState, data || {});
+        }
+
+        currentState = newState;
+
+        // Update state data
+        if (data) {
+            Object.assign(stateData, data);
+        }
+
+        // Update UI based on new state
+        updateUIForState();
+
+        return true;
+    }
+
+    /**
+     * Update UI elements based on current state.
+     * Centralizes all UI updates to prevent inconsistencies.
+     */
+    function updateUIForState() {
+        switch (currentState) {
+            case SearchState.IDLE:
+                $status.text('');
+                $input.prop('disabled', false);
+                $form.find('button[type="submit"]').prop('disabled', false);
+                break;
+
+            case SearchState.SEARCHING:
+                $status.text(KISSCOS.i18n.searching || 'Searching...');
+                $results.empty();
+                $searchTime.text('');
+                $input.prop('disabled', true);
+                $form.find('button[type="submit"]').prop('disabled', true);
+                break;
+
+            case SearchState.SUCCESS:
+                $status.text('');
+                $input.prop('disabled', false);
+                $form.find('button[type="submit"]').prop('disabled', false);
+                break;
+
+            case SearchState.ERROR:
+                $status.text('');
+                $input.prop('disabled', false);
+                $form.find('button[type="submit"]').prop('disabled', false);
+                break;
+
+            case SearchState.REDIRECTING:
+                $status.text('Redirecting to order...');
+                $input.prop('disabled', true);
+                $form.find('button[type="submit"]').prop('disabled', true);
+                break;
+        }
+    }
 
     function getQueryParam(name) {
         try {
@@ -52,11 +150,12 @@ jQuery(function ($) {
             '</tr></thead><tbody>';
 
         orders.forEach(function (order) {
+            var orderNumber = order.order_number || order.number || order.id;
             html += '<tr>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(order.number || order.id) + '</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(orderNumber) + '</a></td>' +
                 '<td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td>' +
-                '<td>' + order.total + '</td>' +
-                '<td>' + escapeHtml(order.date) + '</td>' +
+                '<td>' + (order.total_display || order.total || '') + '</td>' +
+                '<td>' + escapeHtml(order.date_display || order.date || '') + '</td>' +
                 '<td>' + escapeHtml(order.payment || '') + '</td>' +
                 '<td>' + escapeHtml(order.shipping || '') + '</td>' +
                 '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank">View</a></td>' +
@@ -159,13 +258,28 @@ jQuery(function ($) {
             return;
         }
 
-        $status.text(KISSCOS.i18n.searching || 'Searching...');
-        $results.empty();
-        $searchTime.text('');
+        // Prevent double submission
+        if (currentState === SearchState.SEARCHING || currentState === SearchState.REDIRECTING) {
+            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                console.warn('⚠️ Search already in progress, ignoring duplicate submission');
+            }
+            return;
+        }
 
-        var startTime = performance.now();
+        // Transition to SEARCHING state
+        if (!transitionTo(SearchState.SEARCHING, {
+            searchTerm: q,
+            startTime: performance.now()
+        })) {
+            return;
+        }
 
-        $.ajax({
+        // Abort any existing request
+        if (stateData.xhr) {
+            stateData.xhr.abort();
+        }
+
+        stateData.xhr = $.ajax({
             url: KISSCOS.ajax_url,
             method: 'POST',
             dataType: 'json',
@@ -175,8 +289,17 @@ jQuery(function ($) {
                 q: q
             }
         }).done(function (resp) {
+            // Only process if still in SEARCHING state
+            if (currentState !== SearchState.SEARCHING) {
+                if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                    console.warn('⚠️ Response received but state is no longer SEARCHING:', currentState);
+                }
+                return;
+            }
+
             if (!resp || !resp.success) {
                 var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Something went wrong.';
+                transitionTo(SearchState.ERROR);
                 $results.html('<p><strong>' + msg + '</strong></p>');
                 return;
             }
@@ -192,21 +315,27 @@ jQuery(function ($) {
 
             // Handle direct order redirect when searching for an order number.
             if (resp.data.should_redirect_to_order && resp.data.redirect_url) {
-                console.log('🔄 KISS: Redirecting to order...', {
-                    redirect_url: resp.data.redirect_url,
-                    should_redirect: resp.data.should_redirect_to_order,
-                    orders: resp.data.orders
-                });
+                if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                    console.log('🔄 KISS: Redirecting to order...', {
+                        redirect_url: resp.data.redirect_url,
+                        should_redirect: resp.data.should_redirect_to_order,
+                        orders: resp.data.orders
+                    });
+                }
+
+                transitionTo(SearchState.REDIRECTING);
 
                 // Auto-redirect to the order page
                 window.location.href = resp.data.redirect_url;
                 return;
             }
 
+            // Transition to SUCCESS state
+            transitionTo(SearchState.SUCCESS);
             renderResults(resp.data);
 
             // Display both total round-trip time and database search time with percentage
-            var totalSeconds = ((performance.now() - startTime) / 1000).toFixed(2);
+            var totalSeconds = ((performance.now() - stateData.startTime) / 1000).toFixed(2);
             var dbSeconds = (resp.data && typeof resp.data.search_time !== 'undefined') ? resp.data.search_time : null;
 
             if (dbSeconds !== null && totalSeconds > 0) {
@@ -215,10 +344,22 @@ jQuery(function ($) {
             } else {
                 $searchTime.text('Search completed in ' + totalSeconds + ' seconds');
             }
-        }).fail(function () {
+        }).fail(function (xhr, status, error) {
+            // Only process if still in SEARCHING state
+            if (currentState !== SearchState.SEARCHING) {
+                return;
+            }
+
+            // Don't show error for aborted requests
+            if (status === 'abort') {
+                transitionTo(SearchState.IDLE);
+                return;
+            }
+
+            transitionTo(SearchState.ERROR);
             $results.html('<p><strong>Request failed. Please try again.</strong></p>');
         }).always(function () {
-            $status.text('');
+            stateData.xhr = null;
         });
     });
 
