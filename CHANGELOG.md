@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test Infrastructure**: Refactored test bootstrap to load real plugin classes instead of fake implementations
 - **Test Coverage**: Rewrote `SearchTest` to test the actual `search_customers()` method instead of a stubbed version
 - **Test Suite**: Added comprehensive AJAX handler tests (`AjaxHandlerTest`) for end-to-end order number lookup → redirect URL flow
+- **Order Output (Single Source of Truth)**: Standardized frontend rendering and tests to use `order_number` as the canonical field.
+  - **Legacy (temporary)**: `number` is still provided as an alias for one version to avoid breaking older consumers.
+- **Debug Logging**: Consolidated search-class logging through `KISS_Woo_Debug_Tracer` (via a single wrapper) and reduced direct `error_log()` usage.
+- **HPOS Detection**: Replaced duplicated `OrderUtil::custom_orders_table_usage_is_enabled()` checks with `KISS_Woo_Utils::is_hpos_enabled()` where applicable.
 
 ### Added
 - **Documentation**: Created `tests/TESTING-IMPROVEMENTS-SUMMARY.md` with detailed explanation of testing improvements
@@ -26,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - JSON response structure validation
   - Input validation (minimum 2 characters)
   - Sequential order number resolution
+- **Utilities**: Added `KISS_Woo_Utils::is_hpos_enabled()` to centralize HPOS detection.
+- **Order Formatting**: Added `KISS_Woo_Order_Formatter::format_from_raw()` so SQL-fetched orders share the same output shape as `format()`.
 
 ### Technical Details
 - `tests/bootstrap.php` now loads all real plugin classes from `includes/` directory in proper dependency order
@@ -33,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Testable_Search` class simplified to only stub database queries, not business logic
 - Tests now validate actual production code paths, catching real integration bugs
 - All tests use Mockery for `WP_User_Query` mocking to test against real WordPress behavior
+- `admin/kiss-woo-admin.js` now prefers `order_number` / `total_display` / `date_display` with safe fallbacks for older payloads.
+- `tests/Unit/AjaxHandlerTest.php` now asserts `order_number` and optionally validates legacy `number` when present.
 
 ---
 

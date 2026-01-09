@@ -113,8 +113,13 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         
         $order = $data['orders'][0];
         $this->assertSame( 12345, $order['id'] );
-        $this->assertSame( '12345', $order['number'] );
-        
+        $this->assertSame( '12345', $order['order_number'] );
+
+        // Legacy alias (kept temporarily for backward compatibility)
+        if ( isset( $order['number'] ) ) {
+            $this->assertSame( '12345', $order['number'] );
+        }
+
         // Assert redirect_url matches the order's view_url.
         $this->assertSame( $order['view_url'], $data['redirect_url'], 'redirect_url should match order view_url' );
     }
@@ -269,7 +274,12 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         // Assert order data.
         $this->assertCount( 1, $data['orders'] );
         $this->assertSame( 1256171, $data['orders'][0]['id'] );
-        $this->assertSame( 'B349445', $data['orders'][0]['number'] );
+        $this->assertSame( 'B349445', $data['orders'][0]['order_number'] );
+
+        // Legacy alias (kept temporarily for backward compatibility)
+        if ( isset( $data['orders'][0]['number'] ) ) {
+            $this->assertSame( 'B349445', $data['orders'][0]['number'] );
+        }
     }
 }
 

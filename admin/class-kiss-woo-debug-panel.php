@@ -79,8 +79,9 @@ class KISS_Woo_Debug_Panel {
                         <th><?php esc_html_e( 'HPOS Enabled', 'kiss-woo-customer-order-search' ); ?></th>
                         <td>
                             <?php
-                            $hpos_enabled = class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
-                                && Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+                            $hpos_enabled = class_exists( 'KISS_Woo_Utils' )
+                                ? KISS_Woo_Utils::is_hpos_enabled()
+                                : false;
                             ?>
                             <?php if ( $hpos_enabled ) : ?>
                                 <span class="kiss-status-ok">✓ <?php esc_html_e( 'Enabled', 'kiss-woo-customer-order-search' ); ?></span>

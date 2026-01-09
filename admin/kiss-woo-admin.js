@@ -52,11 +52,12 @@ jQuery(function ($) {
             '</tr></thead><tbody>';
 
         orders.forEach(function (order) {
+            var orderNumber = order.order_number || order.number || order.id;
             html += '<tr>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(order.number || order.id) + '</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(orderNumber) + '</a></td>' +
                 '<td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td>' +
-                '<td>' + order.total + '</td>' +
-                '<td>' + escapeHtml(order.date) + '</td>' +
+                '<td>' + (order.total_display || order.total || '') + '</td>' +
+                '<td>' + escapeHtml(order.date_display || order.date || '') + '</td>' +
                 '<td>' + escapeHtml(order.payment || '') + '</td>' +
                 '<td>' + escapeHtml(order.shipping || '') + '</td>' +
                 '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank">View</a></td>' +

@@ -66,6 +66,7 @@ class KISS_Woo_Customer_Order_Search_Plugin {
 
         // Include core files.
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-debug-tracer.php';
+        require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-utils.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search-cache.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-formatter.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-resolver.php';
@@ -199,7 +200,13 @@ class KISS_Woo_Customer_Order_Search_Plugin {
             $resolution = $order_resolver->resolve( $term );
 
             if ( $resolution['order'] ) {
-                $formatted                = KISS_Woo_Order_Formatter::format( $resolution['order'] );
+                $formatted = KISS_Woo_Order_Formatter::format( $resolution['order'] );
+
+                // Legacy alias (one version): older JS/tests used `number`.
+                if ( ! isset( $formatted['number'] ) ) {
+                    $formatted['number'] = (string) $formatted['order_number'];
+                }
+
                 $orders                   = array( $formatted );
                 $should_redirect_to_order = true;
                 $redirect_url             = $formatted['view_url'];
