@@ -15,7 +15,23 @@ class KISS_Woo_COS_Floating_Search_Bar {
 
     private const SCRIPT_HANDLE = 'kiss-woo-cos-floating-toolbar';
 
+    /**
+     * Whether the toolbar is hidden via settings.
+     * Cached to avoid repeated checks.
+     *
+     * @var bool
+     */
+    private bool $is_hidden;
+
     public function __construct() {
+        // Check once at initialization and cache the result.
+        $this->is_hidden = $this->check_if_toolbar_hidden();
+
+        // Short-circuit all hooks if toolbar is hidden.
+        if ( $this->is_hidden ) {
+            return;
+        }
+
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_head', array( $this, 'output_css' ) );
         add_action( 'admin_footer', array( $this, 'render_toolbar' ) );
@@ -27,7 +43,7 @@ class KISS_Woo_COS_Floating_Search_Bar {
      *
      * @return bool
      */
-    private function is_toolbar_hidden() {
+    private function check_if_toolbar_hidden() {
         if ( ! class_exists( 'KISS_Woo_COS_Settings' ) ) {
             return false;
         }
@@ -36,11 +52,6 @@ class KISS_Woo_COS_Floating_Search_Bar {
     
     public function enqueue_assets(): void {
         if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
-            return;
-        }
-
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
             return;
         }
 
@@ -64,10 +75,6 @@ class KISS_Woo_COS_Floating_Search_Bar {
     }
     
     public function output_css(): void {
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
-            return;
-        }
         ?>
         <style>
             #floating-search-toolbar {
@@ -190,16 +197,14 @@ class KISS_Woo_COS_Floating_Search_Bar {
     }
     
     public function output_js(): void {
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
-            return;
-        }
         ?>
         <script>
         (function($) {
             'use strict';
 
-            console.log('🔍 KISS Toolbar loaded - Version 1.1.3 (direct order search enabled)');
+            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                console.log('🔍 KISS Toolbar loaded - Version 1.1.3 (direct order search enabled)');
+            }
 
             const toolbar = document.getElementById('floating-search-toolbar');
             const input = document.getElementById('floating-search-input');
@@ -244,21 +249,29 @@ class KISS_Woo_COS_Floating_Search_Bar {
                     },
                     timeout: 3000 // 3 second timeout
                 }).done(function(resp) {
-                    console.log('🔍 KISS Toolbar: AJAX response', resp);
+                    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                        console.log('🔍 KISS Toolbar: AJAX response', resp);
+                    }
 
                     // If we got a direct order match, redirect immediately
                     if (resp && resp.success && resp.data && resp.data.should_redirect_to_order && resp.data.redirect_url) {
-                        console.log('✅ KISS Toolbar: Direct order match found, redirecting to:', resp.data.redirect_url);
+                        if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                            console.log('✅ KISS Toolbar: Direct order match found, redirecting to:', resp.data.redirect_url);
+                        }
                         window.location.href = resp.data.redirect_url;
                         return;
                     }
 
                     // Otherwise, fall back to search page
-                    console.log('📋 KISS Toolbar: No direct match, going to search page');
+                    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                        console.log('📋 KISS Toolbar: No direct match, going to search page');
+                    }
                     fallbackToSearchPage(searchTerm);
 
                 }).fail(function(xhr, status, error) {
-                    console.log('⚠️ KISS Toolbar: AJAX failed, falling back to search page', error);
+                    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                        console.log('⚠️ KISS Toolbar: AJAX failed, falling back to search page', error);
+                    }
                     // On error, fall back to search page
                     fallbackToSearchPage(searchTerm);
                 });
@@ -295,10 +308,6 @@ class KISS_Woo_COS_Floating_Search_Bar {
             return;
         }
 
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
-            return;
-        }
         ?>
         <div id="floating-search-toolbar">
             <div class="floating-search-toolbar__section">

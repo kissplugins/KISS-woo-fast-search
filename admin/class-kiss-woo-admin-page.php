@@ -81,16 +81,6 @@ class KISS_Woo_COS_Admin_Page {
             return;
         }
 
-        // wp_enqueue_style(
-        //     'kiss-woo-cos-admin',
-        //     KISS_WOO_COS_URL . 'admin/kiss-admin.css',
-        //     array(),
-        //     KISS_WOO_COS_VERSION
-        // );
-
-        // If you don't create a CSS file, this will just 404 harmlessly.
-        // You can also remove the above and inline styles in render_page().
-
         wp_enqueue_script(
             'kiss-woo-cos-admin',
             KISS_WOO_COS_URL . 'admin/kiss-woo-admin.js',

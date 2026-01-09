@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-01-09
+
+### Changed
+- **Code Quality**: Removed debug code left in production (wrapped `console.log()` calls in debug flag checks)
+- **Code Cleanup**: Removed unused methods `get_order_count_for_customer()` and `get_recent_orders_for_customer()` from `KISS_Woo_COS_Search`
+- **Code Cleanup**: Removed dead comments from `class-kiss-woo-admin-page.php`
+- **Debug Consolidation**: Updated `is_debug_enabled()` to use `KISS_WOO_FAST_SEARCH_DEBUG` constant instead of `KISS_WOO_COS_DEBUG` for consistency
+- **Performance**: Consolidated `is_toolbar_hidden()` check to run once in constructor instead of 5 times per request
+
+### Technical Details
+- All debug logging now respects the `KISS_WOO_FAST_SEARCH_DEBUG` flag
+- Toolbar initialization now short-circuits all hooks if toolbar is hidden, avoiding unnecessary hook registrations
+- Removed ~65 lines of unused code and dead comments
+
+---
+
 ## [1.1.5] - 2026-01-09
 
 ### Added
