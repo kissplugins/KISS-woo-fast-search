@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-01-09
+
+### Added
+- **Self-Test Page**: New diagnostic page under WooCommerce → KISS Self-Test that helps troubleshoot order URL generation and redirect issues. Shows system status, tests all URL generation methods, and includes live AJAX search testing.
+- Enhanced console logging for redirect operations (shows redirect URL and order data in browser console).
+- Additional debug logging in AJAX handler to track redirect URL generation.
+
+### Fixed
+- **HPOS Order URL Redirect**: Fixed order search redirect taking users to "All Posts" page instead of the order editor when HPOS (High-Performance Order Storage) is enabled. Now uses WooCommerce's `get_edit_order_url()` method which properly handles both HPOS and legacy storage modes.
+- Added URL generation test diagnostic accessible via `/wp-admin/?kiss_test_url=1&order_id=12345` when debug mode is enabled.
+
 ## [1.1.1] - 2026-01-09
 
 ### Added

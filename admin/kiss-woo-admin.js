@@ -189,7 +189,31 @@ jQuery(function ($) {
 
             // Handle direct order redirect when searching for an order number.
             if (resp.data.should_redirect_to_order && resp.data.redirect_url) {
-                window.location.href = resp.data.redirect_url;
+                console.log('🔄 KISS: Redirecting to order...', {
+                    redirect_url: resp.data.redirect_url,
+                    should_redirect: resp.data.should_redirect_to_order,
+                    orders: resp.data.orders
+                });
+
+                // TEMPORARY DEBUG: Show redirect URL instead of redirecting
+                var debugHtml = '<div class="notice notice-warning" style="padding: 20px; margin: 20px 0; border-left: 4px solid #ffb900;">';
+                debugHtml += '<h3 style="margin-top: 0;">🔍 DEBUG MODE: Redirect Intercepted</h3>';
+                debugHtml += '<p><strong>The plugin wants to redirect you to:</strong></p>';
+                debugHtml += '<p style="background: #f0f0f0; padding: 10px; font-family: monospace; word-break: break-all;">' + resp.data.redirect_url + '</p>';
+                debugHtml += '<p><strong>Test this URL:</strong></p>';
+                debugHtml += '<p><a href="' + resp.data.redirect_url + '" class="button button-primary button-large" target="_blank">Open in New Tab →</a></p>';
+                debugHtml += '<p><a href="' + resp.data.redirect_url + '" class="button button-secondary button-large">Navigate to URL →</a></p>';
+                debugHtml += '<hr style="margin: 15px 0;">';
+                debugHtml += '<details><summary><strong>Full Response Data</strong></summary>';
+                debugHtml += '<pre style="background: #f9f9f9; padding: 10px; overflow: auto; max-height: 300px;">' + JSON.stringify(resp.data, null, 2) + '</pre>';
+                debugHtml += '</details>';
+                debugHtml += '<p style="margin-top: 15px; font-size: 12px; color: #666;"><em>To re-enable auto-redirect, comment out the debug code in kiss-woo-admin.js</em></p>';
+                debugHtml += '</div>';
+
+                $results.html(debugHtml);
+
+                // UNCOMMENT THIS LINE TO RE-ENABLE AUTO-REDIRECT:
+                // window.location.href = resp.data.redirect_url;
                 return;
             }
 

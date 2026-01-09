@@ -51,15 +51,32 @@ class KISS_Woo_Order_Formatter {
      * @return string
      */
     private static function get_edit_url( int $order_id ): string {
-        // Try WooCommerce's method first (HPOS-aware).
-        $edit_url = get_edit_post_link( $order_id, 'raw' );
+        // Get the order object to use WooCommerce's built-in method.
+        $order = wc_get_order( $order_id );
 
-        if ( empty( $edit_url ) ) {
-            // Fallback for HPOS or edge cases.
-            $edit_url = admin_url( 'post.php?post=' . $order_id . '&action=edit' );
+        // Use WooCommerce's get_edit_order_url() method (HPOS-aware).
+        // This method exists in WC_Order and handles both HPOS and legacy modes.
+        if ( $order && method_exists( $order, 'get_edit_order_url' ) ) {
+            return $order->get_edit_order_url();
         }
 
-        return $edit_url;
+        // Fallback 1: Try get_edit_post_link (for legacy/non-HPOS).
+        $edit_url = get_edit_post_link( $order_id, 'raw' );
+
+        if ( ! empty( $edit_url ) ) {
+            return $edit_url;
+        }
+
+        // Fallback 2: Construct URL manually.
+        // Check if HPOS is enabled to determine the correct URL format.
+        if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+             \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+            // HPOS mode: Use admin.php with page=wc-orders.
+            return admin_url( 'admin.php?page=wc-orders&action=edit&id=' . $order_id );
+        }
+
+        // Legacy mode: Use post.php.
+        return admin_url( 'post.php?post=' . $order_id . '&action=edit' );
     }
 
     /**

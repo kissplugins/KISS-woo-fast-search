@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.1.1' );
+    define( 'KISS_WOO_COS_VERSION', '1.1.2' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -73,6 +73,7 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-settings.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-debug-panel.php';
+        require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-self-test.php';
 
         // Initialize debug tracer (must be first for observability).
         KISS_Woo_Debug_Tracer::init();
@@ -90,12 +91,17 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         $debug_panel = new KISS_Woo_Debug_Panel();
         $debug_panel->register();
 
+        // Init self-test page (always available for troubleshooting).
+        $self_test = new KISS_Woo_Self_Test();
+        $self_test->register();
+
         // Register AJAX handler.
         add_action( 'wp_ajax_kiss_woo_customer_search', array( $this, 'handle_ajax_search' ) );
 
         // Register diagnostic endpoint (only when debug is enabled).
         if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
             add_action( 'admin_init', array( $this, 'maybe_run_diagnostic' ) );
+            add_action( 'admin_init', array( $this, 'maybe_run_url_test' ) );
         }
     }
 
@@ -112,6 +118,23 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         $diag_file = KISS_WOO_COS_PATH . 'tests/diagnostic-order-search.php';
         if ( file_exists( $diag_file ) ) {
             include $diag_file;
+            exit;
+        }
+    }
+
+    /**
+     * Run URL test if requested via URL parameter.
+     *
+     * Access via: /wp-admin/?kiss_test_url=1&order_id=12345
+     */
+    public function maybe_run_url_test() {
+        if ( ! isset( $_GET['kiss_test_url'] ) ) {
+            return;
+        }
+
+        $test_file = KISS_WOO_COS_PATH . 'tests/test-order-url.php';
+        if ( file_exists( $test_file ) ) {
+            include $test_file;
             exit;
         }
     }
@@ -204,7 +227,13 @@ class KISS_Woo_Customer_Order_Search_Plugin {
                 $should_redirect_to_order = true;
                 $redirect_url             = $formatted['view_url'];
 
-                $done( array( 'found' => true, 'order_id' => $formatted['id'] ) );
+                KISS_Woo_Debug_Tracer::log( 'AjaxHandler', 'redirect_url_generated', array(
+                    'order_id'     => $formatted['id'],
+                    'redirect_url' => $redirect_url,
+                    'view_url'     => $formatted['view_url'],
+                ) );
+
+                $done( array( 'found' => true, 'order_id' => $formatted['id'], 'redirect_url' => $redirect_url ) );
             } else {
                 $done( array( 'found' => false, 'source' => $resolution['source'] ) );
             }
