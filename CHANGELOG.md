@@ -7,10 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-01-09
+
+### Fixed
+- **🎯 CRITICAL: Double-Escape Bug**: Fixed URL corruption issue where `esc_url()` was double-escaping URLs, causing redirects to fail with malformed URLs like `edit.php#038;action=edit` instead of `post.php?post=123&action=edit`. Removed unnecessary `esc_url()` from JSON response data (URLs from `admin_url()` are already safe).
+
+### Technical Details
+- **Root Cause**: `esc_url()` was being applied to URLs that were already escaped by WordPress's `admin_url()` function
+- **Symptom**: Ampersands (`&`) were being double-encoded to `&#038;` which browsers interpreted as `#038;`, breaking query parameters
+- **Fix**: Removed `esc_url()` from `KISS_Woo_Order_Formatter::format()` since the URL is used in JSON/JavaScript context, not HTML output
+- **Security**: URLs still safe because they come from `admin_url()`, `get_edit_post_link()`, or `$order->get_edit_order_url()` which are all WordPress core functions that return safe URLs
+
+---
+
+## [1.1.2.2] - 2026-01-09
+
+### Changed
+- **Auto-Redirect Re-enabled**: Removed debug intercept mode. Order searches now automatically redirect to the order editor again. Console logging and self-test page remain available for troubleshooting.
+
+---
+
+## [1.1.2.1] - 2026-01-09
+
+### Fixed
+- **Browser Cache Issue**: Bumped version number to force browser cache refresh of JavaScript files. Added version logging to console to help identify cached JS issues.
+
+---
+
 ## [1.1.2] - 2026-01-09
 
 ### Added
 - **Self-Test Page**: New diagnostic page under WooCommerce → KISS Self-Test that helps troubleshoot order URL generation and redirect issues. Shows system status, tests all URL generation methods, and includes live AJAX search testing.
+- **Debug Mode for Redirects**: When searching for an order, the redirect is now intercepted and displayed on-screen instead of auto-redirecting. Shows the exact URL that would be used, with buttons to test it. This helps diagnose redirect issues.
 - Enhanced console logging for redirect operations (shows redirect URL and order data in browser console).
 - Additional debug logging in AJAX handler to track redirect URL generation.
 

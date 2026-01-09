@@ -40,7 +40,7 @@ class KISS_Woo_Order_Formatter {
                 'name'  => self::get_customer_name( $order ),
                 'email' => $order->get_billing_email(),
             ),
-            'view_url'      => esc_url( $edit_url ),
+            'view_url'      => $edit_url, // Don't escape - already safe from admin_url() and will be used in JavaScript
         );
     }
 
