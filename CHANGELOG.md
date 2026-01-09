@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-01-09
+
+### Added
+- **⚡ Fast Path for Toolbar**: Floating toolbar now performs AJAX search first before redirecting to search page. If searching for an order number, redirects directly to the order editor (saves 4-8 seconds). Falls back to search page for customer searches or if AJAX fails.
+
+### Changed
+- **Toolbar UX**: Shows "Searching..." state while performing AJAX lookup
+- **Console Logging**: Toolbar now logs search results to console for debugging
+
+### Performance
+- **Order searches via toolbar**: ~1-2 seconds (AJAX → direct redirect)
+- **Customer searches via toolbar**: ~4-5 seconds (AJAX → search page fallback)
+- **Previous behavior**: Always 7-9 seconds (page load → AJAX → redirect)
+
+---
+
 ## [1.1.3] - 2026-01-09
 
 ### Fixed
