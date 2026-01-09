@@ -17,17 +17,23 @@ class AjaxHandlerTest extends \KISS_Test_Case {
 
     protected function setUp(): void {
         parent::setUp();
-        
+
         // Mock WordPress AJAX functions.
+        // Note: In WordPress, wp_send_json_* functions call die() to stop execution.
+        // We simulate this by throwing an exception that tests can catch.
         Functions\stubs([
             'wp_send_json_success' => function( $data ) {
                 // Capture the response for assertions.
                 global $ajax_response;
                 $ajax_response = [ 'success' => true, 'data' => $data ];
+                // Throw exception to simulate die() and stop execution.
+                throw new \Exception( 'AJAX_RESPONSE_SENT' );
             },
             'wp_send_json_error' => function( $data, $status_code = null ) {
                 global $ajax_response;
                 $ajax_response = [ 'success' => false, 'data' => $data, 'status' => $status_code ];
+                // Throw exception to simulate die() and stop execution.
+                throw new \Exception( 'AJAX_RESPONSE_SENT' );
             },
             'check_ajax_referer' => function( $action, $query_arg, $die ) {
                 return true; // Always pass nonce check in tests.
@@ -44,7 +50,113 @@ class AjaxHandlerTest extends \KISS_Test_Case {
             '__' => function( $text, $domain ) {
                 return $text;
             },
+            'plugin_basename' => function( $file ) {
+                return basename( (string) $file );
+            },
+            'get_edit_post_link' => function( $post_id, $context = 'display' ) {
+                return 'http://example.com/wp-admin/post.php?post=' . $post_id . '&action=edit';
+            },
+            'get_option' => function( $option, $default = false ) {
+                if ( $option === 'woocommerce_custom_orders_table_enabled' ) {
+                    return 'yes';
+                }
+                return $default;
+            },
+            'esc_html' => function( $text ) {
+                return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+            },
+            'esc_url' => function( $url ) {
+                return htmlspecialchars( (string) $url, ENT_QUOTES, 'UTF-8' );
+            },
+            'admin_url' => function( $path ) {
+                return 'http://example.com/wp-admin/' . $path;
+            },
+            'wc_get_order_status_name' => function( $status ) {
+                $statuses = [
+                    'pending'    => 'Pending payment',
+                    'processing' => 'Processing',
+                    'on-hold'    => 'On hold',
+                    'completed'  => 'Completed',
+                    'cancelled'  => 'Cancelled',
+                    'refunded'   => 'Refunded',
+                    'failed'     => 'Failed',
+                ];
+                $status = str_replace( 'wc-', '', $status );
+                return $statuses[ $status ] ?? ucfirst( $status );
+            },
+            'sanitize_text_field' => function( $str ) {
+                return trim( strip_tags( (string) $str ) );
+            },
+            'wp_strip_all_tags' => function( $string, $remove_breaks = false ) {
+                $string = preg_replace( '@<(script|style)[^>]*?>.*?</\\1>@si', '', (string) $string );
+                $string = strip_tags( $string );
+                if ( $remove_breaks ) {
+                    $string = preg_replace( '/[\r\n\t ]+/', ' ', $string );
+                }
+                return trim( $string );
+            },
+            'wp_list_pluck' => function( $list, $field ) {
+                $result = [];
+                foreach ( $list as $item ) {
+                    if ( is_object( $item ) ) {
+                        $result[] = $item->$field ?? null;
+                    } elseif ( is_array( $item ) ) {
+                        $result[] = $item[ $field ] ?? null;
+                    }
+                }
+                return $result;
+            },
+            'human_time_diff' => function( $from, $to = null ) {
+                $to = $to ?? time();
+                $diff = abs( $to - $from );
+                if ( $diff < 60 ) {
+                    return $diff . ' seconds';
+                } elseif ( $diff < 3600 ) {
+                    return floor( $diff / 60 ) . ' minutes';
+                } else {
+                    return floor( $diff / 3600 ) . ' hours';
+                }
+            },
         ]);
+
+        // Mock global $wpdb object.
+        global $wpdb;
+        $wpdb = Mockery::mock('wpdb');
+        $wpdb->prefix = 'wp_';
+        $wpdb->usermeta = 'wp_usermeta';
+        $wpdb->posts = 'wp_posts';
+        $wpdb->postmeta = 'wp_postmeta';
+
+        // Mock wpdb methods.
+        $wpdb->shouldReceive('prepare')
+            ->andReturnUsing(function($query) {
+                // Simple passthrough for tests - just return the query.
+                // In real WordPress, this would escape and substitute placeholders.
+                return $query;
+            });
+
+        $wpdb->shouldReceive('get_results')
+            ->andReturn( [] )->byDefault();
+
+        $wpdb->shouldReceive('get_var')
+            ->andReturn( null )->byDefault();
+
+        $wpdb->shouldReceive('esc_like')
+            ->andReturnUsing(function($text) {
+                return addcslashes( (string) $text, '_%\\' );
+            });
+
+        // Mock WP_User_Query to return empty results by default.
+        // Individual tests can override this if needed.
+        $user_query_mock = Mockery::mock('overload:WP_User_Query');
+        $user_query_mock->shouldReceive('get_results')->andReturn( [] )->byDefault();
+
+        // Load the main plugin file AFTER Brain\Monkey is set up.
+        // This must be done here (not in bootstrap) because the plugin constructor calls add_action(),
+        // which conflicts with Patchwork if defined before Brain\Monkey initializes.
+        if ( ! class_exists( 'KISS_Woo_Customer_Order_Search_Plugin' ) ) {
+            require_once KISS_WOO_COS_PATH . 'kiss-woo-fast-order-search.php';
+        }
     }
 
     protected function tearDown(): void {
@@ -76,7 +188,10 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         $mock_order->shouldReceive('get_currency')->andReturn( 'USD' );
         $mock_order->shouldReceive('get_payment_method_title')->andReturn( 'Credit Card' );
         $mock_order->shouldReceive('get_billing_email')->andReturn( 'customer@example.com' );
+        $mock_order->shouldReceive('get_billing_first_name')->andReturn( 'John' );
+        $mock_order->shouldReceive('get_billing_last_name')->andReturn( 'Doe' );
         $mock_order->shouldReceive('get_edit_order_url')->andReturn( 'https://example.com/wp-admin/post.php?post=12345&action=edit' );
+        $mock_order->shouldReceive('get_formatted_order_total')->andReturn( '$99.99' );
         
         // Mock wc_get_order to return our mock order.
         Functions\when('wc_get_order')->justReturn( $mock_order );
@@ -91,8 +206,12 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         
         // Create plugin instance and call handler.
         $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
-        $plugin->handle_ajax_search();
-        
+        try {
+            $plugin->handle_ajax_search();
+        } catch ( \Exception $e ) {
+            // Expected - wp_send_json_* throws exception to simulate die().
+        }
+
         // Assert response structure.
         $this->assertTrue( $ajax_response['success'] );
         $this->assertArrayHasKey( 'data', $ajax_response );
@@ -136,7 +255,11 @@ class AjaxHandlerTest extends \KISS_Test_Case {
 
         // Create plugin instance and call handler.
         $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
-        $plugin->handle_ajax_search();
+        try {
+            $plugin->handle_ajax_search();
+        } catch ( \Exception $e ) {
+            // Expected - wp_send_json_* throws exception to simulate die().
+        }
 
         // Assert response structure.
         $this->assertTrue( $ajax_response['success'] );
@@ -162,7 +285,11 @@ class AjaxHandlerTest extends \KISS_Test_Case {
 
         // Create plugin instance and call handler.
         $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
-        $plugin->handle_ajax_search();
+        try {
+            $plugin->handle_ajax_search();
+        } catch ( \Exception $e ) {
+            // Expected - wp_send_json_* throws exception to simulate die().
+        }
 
         // Assert response structure.
         $this->assertTrue( $ajax_response['success'] );
@@ -183,7 +310,11 @@ class AjaxHandlerTest extends \KISS_Test_Case {
 
         // Create plugin instance and call handler.
         $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
-        $plugin->handle_ajax_search();
+        try {
+            $plugin->handle_ajax_search();
+        } catch ( \Exception $e ) {
+            // Expected - wp_send_json_* throws exception to simulate die().
+        }
 
         // Assert response structure.
         $this->assertTrue( $ajax_response['success'] );
@@ -214,7 +345,11 @@ class AjaxHandlerTest extends \KISS_Test_Case {
 
         // Create plugin instance and call handler.
         $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
-        $plugin->handle_ajax_search();
+        try {
+            $plugin->handle_ajax_search();
+        } catch ( \Exception $e ) {
+            // Expected - wp_send_json_* throws exception to simulate die().
+        }
 
         // Assert error response.
         $this->assertFalse( $ajax_response['success'] );
@@ -240,14 +375,17 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         $mock_order->shouldReceive('get_currency')->andReturn( 'USD' );
         $mock_order->shouldReceive('get_payment_method_title')->andReturn( 'PayPal' );
         $mock_order->shouldReceive('get_billing_email')->andReturn( 'test@example.com' );
+        $mock_order->shouldReceive('get_billing_first_name')->andReturn( 'Jane' );
+        $mock_order->shouldReceive('get_billing_last_name')->andReturn( 'Smith' );
         $mock_order->shouldReceive('get_edit_order_url')->andReturn( 'https://example.com/wp-admin/post.php?post=1256171&action=edit' );
+        $mock_order->shouldReceive('get_formatted_order_total')->andReturn( '$149.99' );
 
-        // Mock sequential order number plugin function.
-        Functions\when('wc_seq_order_number_pro')->justReturn( (object) [
-            'find_order_by_order_number' => function( $order_number ) use ( $mock_order ) {
-                return $mock_order;
-            }
-        ]);
+        // Mock sequential order number plugin.
+        $seq_plugin_mock = Mockery::mock();
+        $seq_plugin_mock->shouldReceive('find_order_by_order_number')
+            ->andReturn( 1256171 );
+
+        Functions\when('wc_seq_order_number_pro')->justReturn( $seq_plugin_mock );
         Functions\when('wc_get_order')->justReturn( $mock_order );
         Functions\when('wc_get_order_statuses')->justReturn( [ 'wc-completed' => 'Completed' ] );
         Functions\when('wc_price')->alias( function( $amount, $args = [] ) {
@@ -260,7 +398,11 @@ class AjaxHandlerTest extends \KISS_Test_Case {
 
         // Create plugin instance and call handler.
         $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
-        $plugin->handle_ajax_search();
+        try {
+            $plugin->handle_ajax_search();
+        } catch ( \Exception $e ) {
+            // Expected - wp_send_json_* throws exception to simulate die().
+        }
 
         // Assert response.
         $this->assertTrue( $ajax_response['success'] );

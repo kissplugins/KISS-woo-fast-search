@@ -51,6 +51,25 @@ abstract class KISS_Test_Case extends \PHPUnit\Framework\TestCase {
                 return round( $diff / 86400 ) . ' days';
             },
             'current_time'   => function( $type ) { return $type === 'timestamp' ? time() : date( 'Y-m-d H:i:s' ); },
+
+            // Plugin bootstrap / admin helpers (needed when loading the main plugin file in tests).
+            'add_action'     => function( $hook, $callback, $priority = 10, $accepted_args = 1 ) { return true; },
+            'add_filter'     => function( $hook, $callback, $priority = 10, $accepted_args = 1 ) { return true; },
+            'plugin_basename' => function( $file ) { return basename( (string) $file ); },
+            'plugin_dir_path' => function( $file ) { return dirname( (string) $file ) . '/'; },
+            'plugin_dir_url'  => function( $file ) { return 'https://example.com/wp-content/plugins/' . basename( dirname( (string) $file ) ) . '/'; },
+            'admin_url'      => function( $path = '' ) { return 'https://example.com/wp-admin/' . ltrim( (string) $path, '/' ); },
+            'is_admin'       => function() { return true; },
+            'esc_html_e'     => function( $text, $domain = null ) { echo (string) $text; },
+            '__'             => function( $text, $domain = null ) { return $text; },
+            'wp_send_json_success' => function( $data ) {
+                global $ajax_response;
+                $ajax_response = [ 'success' => true, 'data' => $data ];
+            },
+            'wp_send_json_error' => function( $data, $status_code = null ) {
+                global $ajax_response;
+                $ajax_response = [ 'success' => false, 'data' => $data, 'status' => $status_code ];
+            },
         ]);
     }
 
@@ -68,33 +87,24 @@ if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', dirname( __DIR__ ) . '/' );
 }
 
-// Load real plugin classes in dependency order.
+// Provide minimal WooCommerce marker class so plugin bootstrap does not immediately bail.
+if ( ! class_exists( 'WooCommerce' ) ) {
+    class WooCommerce {}
+}
+
+// Load real plugin classes used directly by unit tests.
+// NOTE: We do NOT load the main plugin file here because it calls add_action() in the constructor,
+// which conflicts with Brain\Monkey's Patchwork. Tests that need the main plugin class should
+// load it in their setUp() method AFTER Brain\Monkey is initialized.
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-debug-tracer.php';
+require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-utils.php';
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search-cache.php';
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-formatter.php';
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-resolver.php';
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
 
 /**
- * Mock WP_User_Query for testing.
- * This is a WordPress core class, not part of our plugin.
+ * WP_User_Query is mocked in individual test files using Mockery.
+ * We don't define it here because Mockery needs to create its own mock version.
  */
-if ( ! class_exists( 'WP_User_Query' ) ) {
-    class WP_User_Query {
-        private array $args;
-        private array $results = [];
-
-        public function __construct( array $args = [] ) {
-            $this->args = $args;
-        }
-
-        public function get_results(): array {
-            return $this->results;
-        }
-
-        public function set_results( array $results ): void {
-            $this->results = $results;
-        }
-    }
-}
 

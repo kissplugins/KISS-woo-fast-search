@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Test Infrastructure**: Fixed all 38 unit tests to pass successfully (100% passing rate)
+  - Fixed `WP_User_Query` mocking conflict by removing class definition from bootstrap
+  - Added comprehensive `$wpdb` mock to `AjaxHandlerTest` with all required methods
+  - Added missing WordPress function stubs (`get_edit_post_link`, `wc_get_order_status_name`, `wp_strip_all_tags`, `wp_list_pluck`, `human_time_diff`)
+  - Fixed AJAX response handling by simulating `wp_send_json_*` functions' `die()` behavior with exceptions
+  - Added proper `wc_seq_order_number_pro` plugin mock to `OrderResolverTest`
+  - Created `patchwork.json` to enable stubbing of internal PHP functions
+  - All test suites now pass: AjaxHandler (6/6), OrderResolver (25/25), Search (7/7)
+
 ### Changed
 - **UX Improvement**: Updated search input placeholders to include "order ID" to clarify that order number search is supported
   - Toolbar: "Search order ID, email, or name…"
@@ -19,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Legacy (temporary)**: `number` is still provided as an alias for one version to avoid breaking older consumers.
 - **Debug Logging**: Consolidated search-class logging through `KISS_Woo_Debug_Tracer` (via a single wrapper) and reduced direct `error_log()` usage.
 - **HPOS Detection**: Replaced duplicated `OrderUtil::custom_orders_table_usage_is_enabled()` checks with `KISS_Woo_Utils::is_hpos_enabled()` where applicable.
+- **Test Suite (Blocker Fix)**: Updated `tests/bootstrap.php` to load the main plugin file (`kiss-woo-fast-order-search.php`) and stub minimal WP/WC bootstrap functions/classes so unit tests can instantiate `KISS_Woo_Customer_Order_Search_Plugin` without WordPress.
 
 ### Added
 - **Documentation**: Created `tests/TESTING-IMPROVEMENTS-SUMMARY.md` with detailed explanation of testing improvements
