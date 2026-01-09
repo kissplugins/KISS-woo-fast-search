@@ -7,7 +7,7 @@
     'use strict';
 
     if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-        console.log('🔍 KISS Toolbar loaded - Version 1.1.8 (direct order search enabled)');
+        console.log('🔍 KISS Toolbar loaded - Version 1.2.0 (explicit state machine)');
     }
 
     const toolbar = document.getElementById('floating-search-toolbar');
@@ -24,6 +24,76 @@
     // Store original button text
     const originalBtnText = submitBtn.textContent;
 
+    /**
+     * Explicit State Machine for Toolbar Search
+     * Prevents impossible states and ensures consistent UI behavior.
+     */
+    const ToolbarState = {
+        IDLE: 'idle',
+        SEARCHING: 'searching',
+        REDIRECTING_ORDER: 'redirecting_order',
+        REDIRECTING_SEARCH: 'redirecting_search'
+    };
+
+    let currentState = ToolbarState.IDLE;
+    let currentXhr = null;
+
+    /**
+     * Transition to a new state with validation.
+     */
+    function transitionTo(newState) {
+        const validTransitions = {
+            'idle': ['searching'],
+            'searching': ['redirecting_order', 'redirecting_search', 'idle'],
+            'redirecting_order': [],
+            'redirecting_search': []
+        };
+
+        if (!validTransitions[currentState] || validTransitions[currentState].indexOf(newState) === -1) {
+            console.warn('⚠️ Toolbar: Invalid state transition:', currentState, '→', newState);
+            return false;
+        }
+
+        if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+            console.log('🔄 Toolbar state transition:', currentState, '→', newState);
+        }
+
+        currentState = newState;
+        updateUIForState();
+        return true;
+    }
+
+    /**
+     * Update UI elements based on current state.
+     */
+    function updateUIForState() {
+        switch (currentState) {
+            case ToolbarState.IDLE:
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+                input.disabled = false;
+                break;
+
+            case ToolbarState.SEARCHING:
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Searching...';
+                input.disabled = true;
+                break;
+
+            case ToolbarState.REDIRECTING_ORDER:
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Opening order...';
+                input.disabled = true;
+                break;
+
+            case ToolbarState.REDIRECTING_SEARCH:
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Loading results...';
+                input.disabled = true;
+                break;
+        }
+    }
+
     function handleSearch() {
         const searchTerm = input.value.trim();
         if (!searchTerm) {
@@ -36,13 +106,24 @@
             return;
         }
 
-        // Show loading state
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Searching...';
-        input.disabled = true;
+        // Prevent double submission
+        if (currentState !== ToolbarState.IDLE) {
+            console.warn('⚠️ Toolbar: Search already in progress, ignoring duplicate submission');
+            return;
+        }
+
+        // Transition to SEARCHING state
+        if (!transitionTo(ToolbarState.SEARCHING)) {
+            return;
+        }
+
+        // Abort any existing request
+        if (currentXhr) {
+            currentXhr.abort();
+        }
 
         // Try AJAX search first (fast path for direct order matches)
-        $.ajax({
+        currentXhr = $.ajax({
             url: floatingSearchBar.ajaxUrl,
             method: 'POST',
             dataType: 'json',
@@ -53,6 +134,12 @@
             },
             timeout: 3000 // 3 second timeout
         }).done(function(resp) {
+            // Only process if still in SEARCHING state
+            if (currentState !== ToolbarState.SEARCHING) {
+                console.warn('⚠️ Toolbar: Response received but state is no longer SEARCHING:', currentState);
+                return;
+            }
+
             if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
                 console.log('🔍 KISS Toolbar: AJAX response', resp);
             }
@@ -62,6 +149,7 @@
                 if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
                     console.log('✅ KISS Toolbar: Direct order match found, redirecting to:', resp.data.redirect_url);
                 }
+                transitionTo(ToolbarState.REDIRECTING_ORDER);
                 window.location.href = resp.data.redirect_url;
                 return;
             }
@@ -73,23 +161,35 @@
             fallbackToSearchPage(searchTerm);
 
         }).fail(function(xhr, status, error) {
+            // Only process if still in SEARCHING state
+            if (currentState !== ToolbarState.SEARCHING) {
+                return;
+            }
+
+            // Don't show error for aborted requests
+            if (status === 'abort') {
+                transitionTo(ToolbarState.IDLE);
+                return;
+            }
+
             if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
                 console.log('⚠️ KISS Toolbar: AJAX failed, falling back to search page', error);
             }
             // On error, fall back to search page
             fallbackToSearchPage(searchTerm);
+        }).always(function() {
+            currentXhr = null;
         });
     }
 
     function fallbackToSearchPage(searchTerm) {
         const baseUrl = (floatingSearchBar && floatingSearchBar.searchUrl) ? floatingSearchBar.searchUrl : '';
         if (!baseUrl) {
-            // Reset UI
-            submitBtn.disabled = false;
-            submitBtn.textContent = originalBtnText;
-            input.disabled = false;
+            // Reset to IDLE state
+            transitionTo(ToolbarState.IDLE);
             return;
         }
+        transitionTo(ToolbarState.REDIRECTING_SEARCH);
         window.location.href = baseUrl + '&q=' + encodeURIComponent(searchTerm);
     }
 

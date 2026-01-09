@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **State Machine**: Implemented explicit finite state machines (FSM) for AJAX search to prevent impossible UI states (Audit item 4.1)
+  - Created state machine for admin search page with 5 states: IDLE, SEARCHING, SUCCESS, ERROR, REDIRECTING
+  - Created state machine for toolbar search with 4 states: IDLE, SEARCHING, REDIRECTING_ORDER, REDIRECTING_SEARCH
+  - Added state transition validation to prevent invalid state changes
+  - Added request abortion when starting new searches to prevent race conditions
+  - Added double-submission prevention to ignore duplicate requests
+  - Added debug logging for state transitions (when debug mode enabled)
+  - Created comprehensive documentation in `docs/STATE-MACHINE.md` with state diagrams
+  - Benefits: Prevents "Searching..." text from getting stuck, prevents double submissions, clearer error recovery
+
 ### Fixed
 - **Test Infrastructure**: Fixed all 38 unit tests to pass successfully (100% passing rate)
   - Fixed `WP_User_Query` mocking conflict by removing class definition from bootstrap

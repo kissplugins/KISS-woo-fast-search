@@ -19,8 +19,8 @@
   - [x] 1.2 - Extract Inline CSS/JS to Separate Files
   - [x] 1.1 - Extract AJAX Handler to Dedicated Class
 
-- [ ] **LOWER PRIORITY** (Higher Effort / Lower Impact)
-  - [ ] 4.1 - Add Explicit State Machine for AJAX Search
+- [/] **LOWER PRIORITY** (Higher Effort / Lower Impact)
+  - [x] 4.1 - Add Explicit State Machine for AJAX Search
   - [ ] 4.2 - Add Timeout Fallback for Toolbar Search
 
 ---
