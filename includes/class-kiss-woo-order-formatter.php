@@ -32,7 +32,7 @@ class KISS_Woo_Order_Formatter {
             'status'        => $order->get_status(),
             'status_label'  => wc_get_order_status_name( $order->get_status() ),
             'total'         => $order->get_total(),
-            'total_display' => wp_strip_all_tags( $order->get_formatted_order_total() ),
+            'total_display' => html_entity_decode( wp_strip_all_tags( $order->get_formatted_order_total() ), ENT_QUOTES, 'UTF-8' ),
             'currency'      => $order->get_currency(),
             'date_created'  => $order->get_date_created() ? $order->get_date_created()->format( 'Y-m-d H:i:s' ) : null,
             'date_display'  => $order->get_date_created() ? $order->get_date_created()->format( get_option( 'date_format' ) ) : '',

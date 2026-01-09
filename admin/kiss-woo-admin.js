@@ -187,12 +187,11 @@ jQuery(function ($) {
                 console.groupEnd();
             }
 
-            // Handle direct order redirect (optional - can be disabled)
-            // Uncomment if you want auto-redirect to orders:
-            // if (resp.data.should_redirect_to_order && resp.data.redirect_url) {
-            //     window.location.href = resp.data.redirect_url;
-            //     return;
-            // }
+            // Handle direct order redirect when searching for an order number.
+            if (resp.data.should_redirect_to_order && resp.data.redirect_url) {
+                window.location.href = resp.data.redirect_url;
+                return;
+            }
 
             renderResults(resp.data);
 

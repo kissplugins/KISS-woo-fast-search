@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Diagnostic Endpoint**: When `KISS_WOO_FAST_SEARCH_DEBUG` is enabled, access `/wp-admin/?kiss_diag=1&order=B331580` to run comprehensive order search diagnostics including HPOS status, Sequential Order Numbers Pro integration, and direct database lookups.
 
+### Changed
+- **Auto-redirect on order search**: When user searches for an order number, the page now automatically redirects to the order editor instead of showing results.
+
+### Fixed
+- **HTML entities in order total**: Fixed `&#36;` displaying instead of `$` in order total display by properly decoding HTML entities.
+
 ## [1.1.0] - 2026-01-09
 
 ### Added
