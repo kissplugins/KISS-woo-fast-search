@@ -10,10 +10,10 @@
   - [x] 5.3 - Remove Ghost Code
   - [x] 2.4 - Consolidate `is_toolbar_hidden()` Check
 
-- [ ] **HIGH PRIORITY** (Medium Effort / High Impact / Medium Risk)
-  - [ ] 3.1 - Consolidate Order Formatting (Single Source of Truth)
-  - [ ] 3.3 - Unify Debug Logging
-  - [ ] 2.2 - Create Utility Class for HPOS Detection
+- [x] **HIGH PRIORITY** (Medium Effort / High Impact / Medium Risk)
+  - [x] 3.1 - Consolidate Order Formatting (Single Source of Truth)
+  - [x] 3.3 - Unify Debug Logging
+  - [x] 2.2 - Create Utility Class for HPOS Detection
 
 - [ ] **MEDIUM PRIORITY** (Medium-High Effort / Medium Impact)
   - [ ] 1.2 - Extract Inline CSS/JS to Separate Files

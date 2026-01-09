@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All test suites now pass: AjaxHandler (6/6), OrderResolver (25/25), Search (7/7)
 
 ### Changed
+- **Code Quality - Single Source of Truth**: Completed high-priority refactoring from systematic audit
+  - **Order Formatting**: Removed deprecated `format_order_for_output()` and `format_order_data_for_output()` methods from Search class. All order formatting now goes through `KISS_Woo_Order_Formatter` as the single source of truth (Audit item 3.1)
+  - **Debug Logging**: Removed `debug_log()` and `is_debug_enabled()` wrapper methods from Search class. All debug logging now goes directly through `KISS_Woo_Debug_Tracer::log()` for single observability path (Audit item 3.3)
+  - **HPOS Detection**: Already using `KISS_Woo_Utils::is_hpos_enabled()` utility across all files (Audit item 2.2 - previously completed)
 - **UX Improvement**: Updated search input placeholders to include "order ID" to clarify that order number search is supported
   - Toolbar: "Search order ID, email, or name…"
   - Admin page: "Type order ID, email, or name and hit Enter…"
