@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **UX Improvement**: Updated search input placeholders to include "order ID" to clarify that order number search is supported
+  - Toolbar: "Search order ID, email, or name…"
+  - Admin page: "Type order ID, email, or name and hit Enter…"
+  - Description text: "Enter an order ID, customer email, partial email, or name to quickly find their account and orders."
 - **Test Infrastructure**: Refactored test bootstrap to load real plugin classes instead of fake implementations
 - **Test Coverage**: Rewrote `SearchTest` to test the actual `search_customers()` method instead of a stubbed version
 - **Test Suite**: Added comprehensive AJAX handler tests (`AjaxHandlerTest`) for end-to-end order number lookup → redirect URL flow
