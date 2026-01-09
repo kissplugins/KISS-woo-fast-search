@@ -60,54 +60,24 @@ abstract class KISS_Test_Case extends \PHPUnit\Framework\TestCase {
     }
 }
 
-/**
- * Mock KISS_Woo_Debug_Tracer to prevent loading the real class.
- */
-if ( ! class_exists( 'KISS_Woo_Debug_Tracer' ) ) {
-    class KISS_Woo_Debug_Tracer {
-        public static function start_timer( string $component, string $operation ): callable {
-            return function( array $extra = [] ) { /* no-op */ };
-        }
-        public static function log( string $component, string $event, array $context = [], string $level = 'info' ): void {
-            // Silent in tests.
-        }
-    }
+// Define plugin constants needed by classes.
+if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
+    define( 'KISS_WOO_COS_VERSION', '1.1.6' );
+}
+if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
+    define( 'KISS_WOO_COS_PATH', dirname( __DIR__ ) . '/' );
 }
 
-/**
- * Mock KISS_Woo_Search_Cache for testing.
- */
-if ( ! class_exists( 'KISS_Woo_Search_Cache' ) ) {
-    class KISS_Woo_Search_Cache {
-        private array $store = [];
-
-        public function get_search_key( string $term, string $type ): string {
-            return "kiss_{$type}_{$term}";
-        }
-
-        public function get( string $key ) {
-            return $this->store[ $key ] ?? null;
-        }
-
-        public function set( string $key, $value, int $ttl = 3600 ): bool {
-            $this->store[ $key ] = $value;
-            return true;
-        }
-
-        public function delete( string $key ): bool {
-            unset( $this->store[ $key ] );
-            return true;
-        }
-
-        public function clear_all(): bool {
-            $this->store = [];
-            return true;
-        }
-    }
-}
+// Load real plugin classes in dependency order.
+require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-debug-tracer.php';
+require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search-cache.php';
+require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-formatter.php';
+require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-resolver.php';
+require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
 
 /**
  * Mock WP_User_Query for testing.
+ * This is a WordPress core class, not part of our plugin.
  */
 if ( ! class_exists( 'WP_User_Query' ) ) {
     class WP_User_Query {
@@ -127,7 +97,4 @@ if ( ! class_exists( 'WP_User_Query' ) ) {
         }
     }
 }
-
-// Load the actual classes to test.
-require_once dirname( __DIR__ ) . '/includes/class-kiss-woo-order-resolver.php';
 

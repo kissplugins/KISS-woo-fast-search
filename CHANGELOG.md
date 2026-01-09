@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Test Infrastructure**: Refactored test bootstrap to load real plugin classes instead of fake implementations
+- **Test Coverage**: Rewrote `SearchTest` to test the actual `search_customers()` method instead of a stubbed version
+- **Test Suite**: Added comprehensive AJAX handler tests (`AjaxHandlerTest`) for end-to-end order number lookup → redirect URL flow
+
+### Added
+- **Documentation**: Created `tests/TESTING-IMPROVEMENTS-SUMMARY.md` with detailed explanation of testing improvements
+- **Documentation**: Created `tests/README.md` with complete guide on running tests and writing new tests
+- **Test Coverage**: Added 6 new test cases in `AjaxHandlerTest` covering:
+  - Valid order number → redirect URL validation
+  - Non-order search → no redirect behavior
+  - Invalid order number handling
+  - JSON response structure validation
+  - Input validation (minimum 2 characters)
+  - Sequential order number resolution
+
+### Technical Details
+- `tests/bootstrap.php` now loads all real plugin classes from `includes/` directory in proper dependency order
+- Only external dependencies (WordPress core classes, WooCommerce functions) are mocked via Brain\Monkey
+- `Testable_Search` class simplified to only stub database queries, not business logic
+- Tests now validate actual production code paths, catching real integration bugs
+- All tests use Mockery for `WP_User_Query` mocking to test against real WordPress behavior
+
+---
+
 ## [1.1.6] - 2026-01-09
 
 ### Changed
