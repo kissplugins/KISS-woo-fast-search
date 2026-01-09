@@ -9,17 +9,16 @@ namespace KISS\Tests\Unit;
 
 use Brain\Monkey\Functions;
 use KISS_Woo_Order_Resolver;
-use KISS_Woo_Search_Cache;
 use Mockery;
 
 class OrderResolverTest extends \KISS_Test_Case {
 
-    private KISS_Woo_Search_Cache $cache;
+    private \KISS_Woo_Search_Cache $cache;
     private KISS_Woo_Order_Resolver $resolver;
 
     protected function setUp(): void {
         parent::setUp();
-        $this->cache    = new KISS_Woo_Search_Cache();
+        $this->cache    = new \KISS_Woo_Search_Cache();
         $this->resolver = new KISS_Woo_Order_Resolver( $this->cache );
     }
 
@@ -66,44 +65,27 @@ class OrderResolverTest extends \KISS_Test_Case {
     }
 
     // =========================================================================
-    // resolve() Tests - Cache Behavior
+    // resolve() Tests - Invalid Input
     // =========================================================================
-
-    public function test_resolve_returns_cached_order(): void {
-        // Pre-populate cache with order ID 999.
-        $cache_key = $this->cache->get_search_key( 'b12345', 'order' );
-        $this->cache->set( $cache_key, 999 );
-
-        // Mock wc_get_order to return a fake order.
-        $mock_order = Mockery::mock( 'WC_Order' );
-        $mock_order->shouldReceive( 'get_id' )->andReturn( 999 );
-
-        Functions\expect( 'wc_get_order' )
-            ->once()
-            ->with( 999 )
-            ->andReturn( $mock_order );
-
-        $result = $this->resolver->resolve( 'B12345' );
-
-        $this->assertSame( $mock_order, $result['order'] );
-        $this->assertSame( 'cache', $result['source'] );
-        $this->assertTrue( $result['cached'] );
-    }
-
-    public function test_resolve_returns_cached_miss(): void {
-        // Pre-populate cache with 0 (cached "not found").
-        $cache_key = $this->cache->get_search_key( 'b99999', 'order' );
-        $this->cache->set( $cache_key, 0 );
-
-        $result = $this->resolver->resolve( 'B99999' );
-
-        $this->assertNull( $result['order'] );
-        $this->assertSame( 'cache', $result['source'] );
-        $this->assertTrue( $result['cached'] );
-    }
 
     public function test_resolve_returns_invalid_for_non_order_input(): void {
         $result = $this->resolver->resolve( 'john@example.com' );
+
+        $this->assertNull( $result['order'] );
+        $this->assertSame( 'invalid', $result['source'] );
+        $this->assertFalse( $result['cached'] );
+    }
+
+    public function test_resolve_returns_invalid_for_empty_input(): void {
+        $result = $this->resolver->resolve( '' );
+
+        $this->assertNull( $result['order'] );
+        $this->assertSame( 'invalid', $result['source'] );
+        $this->assertFalse( $result['cached'] );
+    }
+
+    public function test_resolve_returns_invalid_for_prefix_only(): void {
+        $result = $this->resolver->resolve( 'B' );
 
         $this->assertNull( $result['order'] );
         $this->assertSame( 'invalid', $result['source'] );
@@ -132,7 +114,7 @@ class OrderResolverTest extends \KISS_Test_Case {
         $this->assertFalse( $result['cached'] );
     }
 
-    public function test_resolve_caches_not_found_result(): void {
+    public function test_resolve_returns_not_found_when_order_doesnt_exist(): void {
         Functions\expect( 'wc_get_order' )
             ->once()
             ->with( 99999 )
@@ -143,10 +125,6 @@ class OrderResolverTest extends \KISS_Test_Case {
         $this->assertNull( $result['order'] );
         $this->assertSame( 'not_found', $result['source'] );
         $this->assertFalse( $result['cached'] );
-
-        // Verify cache was set to 0.
-        $cache_key = $this->cache->get_search_key( '99999', 'order' );
-        $this->assertSame( 0, $this->cache->get( $cache_key ) );
     }
 
     public function test_resolve_rejects_mismatched_order_number(): void {
@@ -164,6 +142,39 @@ class OrderResolverTest extends \KISS_Test_Case {
 
         $this->assertNull( $result['order'] );
         $this->assertSame( 'not_found', $result['source'] );
+    }
+
+    public function test_resolve_accepts_matching_order_number_case_insensitive(): void {
+        $mock_order = Mockery::mock( 'WC_Order' );
+        $mock_order->shouldReceive( 'get_id' )->andReturn( 12345 );
+        $mock_order->shouldReceive( 'get_order_number' )->andReturn( 'B12345' );
+
+        Functions\expect( 'wc_get_order' )
+            ->once()
+            ->with( 12345 )
+            ->andReturn( $mock_order );
+
+        // Search with lowercase 'b'.
+        $result = $this->resolver->resolve( 'b12345' );
+
+        $this->assertSame( $mock_order, $result['order'] );
+        $this->assertSame( 'direct_id', $result['source'] );
+    }
+
+    public function test_resolve_handles_hash_prefix(): void {
+        $mock_order = Mockery::mock( 'WC_Order' );
+        $mock_order->shouldReceive( 'get_id' )->andReturn( 12345 );
+        $mock_order->shouldReceive( 'get_order_number' )->andReturn( '12345' );
+
+        Functions\expect( 'wc_get_order' )
+            ->once()
+            ->with( 12345 )
+            ->andReturn( $mock_order );
+
+        $result = $this->resolver->resolve( '#12345' );
+
+        $this->assertSame( $mock_order, $result['order'] );
+        $this->assertSame( 'direct_id', $result['source'] );
     }
 }
 

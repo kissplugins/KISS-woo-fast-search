@@ -29,7 +29,7 @@
     <php>
         <const name="ABSPATH" value="/tmp/wordpress/" />
         <const name="KISS_WOO_COS_PATH" value="./" />
-        <const name="KISS_WOO_COS_VERSION" value="1.1.1" />
+        <const name="KISS_WOO_COS_VERSION" value="1.1.5" />
         <const name="KISS_WOO_FAST_SEARCH_DEBUG" value="false" />
     </php>
 </phpunit>

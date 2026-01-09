@@ -37,6 +37,20 @@ abstract class KISS_Test_Case extends \PHPUnit\Framework\TestCase {
             },
             'apply_filters'  => function( $tag, $value ) { return $value; },
             'get_edit_user_link' => function( $user_id ) { return "https://example.com/wp-admin/user-edit.php?user_id={$user_id}"; },
+            'get_transient'  => function( $key ) { return false; },
+            'set_transient'  => function( $key, $value, $expiration = 0 ) { return true; },
+            'delete_transient' => function( $key ) { return true; },
+            'date_i18n'      => function( $format, $timestamp = false ) {
+                return date( $format, $timestamp ?: time() );
+            },
+            'human_time_diff' => function( $from, $to = 0 ) {
+                $diff = abs( ( $to ?: time() ) - $from );
+                if ( $diff < 60 ) return $diff . ' secs';
+                if ( $diff < 3600 ) return round( $diff / 60 ) . ' mins';
+                if ( $diff < 86400 ) return round( $diff / 3600 ) . ' hours';
+                return round( $diff / 86400 ) . ' days';
+            },
+            'current_time'   => function( $type ) { return $type === 'timestamp' ? time() : date( 'Y-m-d H:i:s' ); },
         ]);
     }
 
@@ -88,6 +102,28 @@ if ( ! class_exists( 'KISS_Woo_Search_Cache' ) ) {
         public function clear_all(): bool {
             $this->store = [];
             return true;
+        }
+    }
+}
+
+/**
+ * Mock WP_User_Query for testing.
+ */
+if ( ! class_exists( 'WP_User_Query' ) ) {
+    class WP_User_Query {
+        private array $args;
+        private array $results = [];
+
+        public function __construct( array $args = [] ) {
+            $this->args = $args;
+        }
+
+        public function get_results(): array {
+            return $this->results;
+        }
+
+        public function set_results( array $results ): void {
+            $this->results = $results;
         }
     }
 }
