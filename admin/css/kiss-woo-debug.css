@@ -1,0 +1,107 @@
+/**
+ * KISS Woo Fast Order Search - Debug Panel Styles
+ * Extracted from inline styles in class-kiss-woo-debug-panel.php
+ */
+
+.kiss-woo-debug-panel {
+    max-width: 1200px;
+}
+
+.kiss-debug-controls {
+    margin: 20px 0;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.kiss-debug-status {
+    margin: 20px 0;
+}
+
+.kiss-debug-status table {
+    max-width: 500px;
+}
+
+.kiss-status-ok {
+    color: #46b450;
+}
+
+.kiss-status-warn {
+    color: #ffb900;
+}
+
+.kiss-status-info {
+    color: #00a0d2;
+}
+
+.kiss-debug-traces {
+    margin: 20px 0;
+}
+
+.kiss-debug-request {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.kiss-debug-request-header {
+    padding: 10px 15px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #ccd0d4;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+}
+
+.kiss-debug-request-header:hover {
+    background: #f0f0f1;
+}
+
+.kiss-debug-request-body {
+    padding: 15px;
+    display: none;
+}
+
+.kiss-debug-request.expanded .kiss-debug-request-body {
+    display: block;
+}
+
+.kiss-trace-item {
+    font-family: monospace;
+    font-size: 12px;
+    padding: 5px 10px;
+    border-left: 3px solid #ccc;
+    margin: 5px 0;
+}
+
+.kiss-trace-item.level-info {
+    border-color: #00a0d2;
+}
+
+.kiss-trace-item.level-warn {
+    border-color: #ffb900;
+}
+
+.kiss-trace-item.level-error {
+    border-color: #dc3232;
+}
+
+.kiss-trace-time {
+    color: #666;
+}
+
+.kiss-trace-component {
+    color: #0073aa;
+    font-weight: bold;
+}
+
+.kiss-trace-action {
+    color: #23282d;
+}
+
+.kiss-trace-context {
+    color: #666;
+    margin-left: 20px;
+}
+

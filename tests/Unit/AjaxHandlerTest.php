@@ -204,10 +204,10 @@ class AjaxHandlerTest extends \KISS_Test_Case {
             return 'https://example.com/wp-admin/' . $path;
         });
         
-        // Create plugin instance and call handler.
-        $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
+        // Create AJAX handler instance and call handler.
+        $ajax_handler = new \KISS_Woo_Ajax_Handler();
         try {
-            $plugin->handle_ajax_search();
+            $ajax_handler->handle_search();
         } catch ( \Exception $e ) {
             // Expected - wp_send_json_* throws exception to simulate die().
         }
@@ -253,10 +253,10 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         // Mock empty search results.
         Functions\when('wc_get_order')->justReturn( false );
 
-        // Create plugin instance and call handler.
-        $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
+        // Create AJAX handler instance and call handler.
+        $ajax_handler = new \KISS_Woo_Ajax_Handler();
         try {
-            $plugin->handle_ajax_search();
+            $ajax_handler->handle_search();
         } catch ( \Exception $e ) {
             // Expected - wp_send_json_* throws exception to simulate die().
         }
@@ -283,10 +283,10 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         // Mock wc_get_order to return false (order not found).
         Functions\when('wc_get_order')->justReturn( false );
 
-        // Create plugin instance and call handler.
-        $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
+        // Create AJAX handler instance and call handler.
+        $ajax_handler = new \KISS_Woo_Ajax_Handler();
         try {
-            $plugin->handle_ajax_search();
+            $ajax_handler->handle_search();
         } catch ( \Exception $e ) {
             // Expected - wp_send_json_* throws exception to simulate die().
         }
@@ -308,10 +308,10 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         $_POST['q'] = 'test';
         $_POST['nonce'] = 'test_nonce';
 
-        // Create plugin instance and call handler.
-        $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
+        // Create AJAX handler instance and call handler.
+        $ajax_handler = new \KISS_Woo_Ajax_Handler();
         try {
-            $plugin->handle_ajax_search();
+            $ajax_handler->handle_search();
         } catch ( \Exception $e ) {
             // Expected - wp_send_json_* throws exception to simulate die().
         }
@@ -343,10 +343,10 @@ class AjaxHandlerTest extends \KISS_Test_Case {
         $_POST['q'] = 'a';
         $_POST['nonce'] = 'test_nonce';
 
-        // Create plugin instance and call handler.
-        $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
+        // Create AJAX handler instance and call handler.
+        $ajax_handler = new \KISS_Woo_Ajax_Handler();
         try {
-            $plugin->handle_ajax_search();
+            $ajax_handler->handle_search();
         } catch ( \Exception $e ) {
             // Expected - wp_send_json_* throws exception to simulate die().
         }
@@ -396,10 +396,10 @@ class AjaxHandlerTest extends \KISS_Test_Case {
             return 'https://example.com/wp-admin/' . $path;
         });
 
-        // Create plugin instance and call handler.
-        $plugin = \KISS_Woo_Customer_Order_Search_Plugin::instance();
+        // Create AJAX handler instance and call handler.
+        $ajax_handler = new \KISS_Woo_Ajax_Handler();
         try {
-            $plugin->handle_ajax_search();
+            $ajax_handler->handle_search();
         } catch ( \Exception $e ) {
             // Expected - wp_send_json_* throws exception to simulate die().
         }

@@ -22,6 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Order Formatting**: Removed deprecated `format_order_for_output()` and `format_order_data_for_output()` methods from Search class. All order formatting now goes through `KISS_Woo_Order_Formatter` as the single source of truth (Audit item 3.1)
   - **Debug Logging**: Removed `debug_log()` and `is_debug_enabled()` wrapper methods from Search class. All debug logging now goes directly through `KISS_Woo_Debug_Tracer::log()` for single observability path (Audit item 3.3)
   - **HPOS Detection**: Already using `KISS_Woo_Utils::is_hpos_enabled()` utility across all files (Audit item 2.2 - previously completed)
+- **Code Quality - Separation of Concerns**: Completed medium-priority refactoring from systematic audit
+  - **Inline CSS/JS Extraction**: Extracted ~400 lines of inline CSS/JS to separate files for better caching and maintainability (Audit item 1.2)
+    - Created `admin/css/kiss-woo-admin.css` (77 lines from admin-page.php)
+    - Created `admin/css/kiss-woo-debug.css` (103 lines from debug-panel.php)
+    - Created `admin/js/kiss-woo-debug.js` (90 lines from debug-panel.php)
+    - Created `admin/css/kiss-woo-toolbar.css` (118 lines from toolbar.php)
+    - Created `admin/js/kiss-woo-toolbar.js` (107 lines from toolbar.php)
+    - Updated all three files to properly enqueue assets via `wp_enqueue_style()` and `wp_enqueue_script()`
+    - Removed inline `<style>` and `<script>` tags from PHP files
+  - **AJAX Handler Extraction**: Extracted 110+ lines of AJAX business logic to dedicated class for better separation of concerns (Audit item 1.1)
+    - Created `includes/class-kiss-woo-ajax-handler.php` with `KISS_Woo_Ajax_Handler` class
+    - Moved `handle_ajax_search()` method from main plugin file to new `handle_search()` method in dedicated class
+    - Extracted search orchestration logic to private `perform_search()` method for better testability
+    - Updated all 6 AJAX handler tests to use new class
+    - Main plugin file reduced from 264 to 150 lines (43% reduction)
 - **UX Improvement**: Updated search input placeholders to include "order ID" to clarify that order number search is supported
   - Toolbar: "Search order ID, email, or name…"
   - Admin page: "Type order ID, email, or name and hit Enter…"

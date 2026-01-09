@@ -102,6 +102,7 @@ require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search-cache.php';
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-formatter.php';
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-resolver.php';
 require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
+require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-ajax-handler.php';
 
 /**
  * WP_User_Query is mocked in individual test files using Mockery.

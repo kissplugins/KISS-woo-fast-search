@@ -17,6 +17,7 @@ class KISS_Woo_Debug_Panel {
      */
     public function register(): void {
         add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
+        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'wp_ajax_kiss_woo_debug_get_traces', array( $this, 'ajax_get_traces' ) );
         add_action( 'wp_ajax_kiss_woo_debug_clear_traces', array( $this, 'ajax_clear_traces' ) );
     }
@@ -41,10 +42,46 @@ class KISS_Woo_Debug_Panel {
     }
 
     /**
+     * Enqueue CSS and JS for debug panel.
+     *
+     * @param string $hook Current admin page hook.
+     */
+    public function enqueue_assets( string $hook ): void {
+        if ( 'woocommerce_page_kiss-woo-debug' !== $hook ) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'kiss-woo-debug',
+            KISS_WOO_COS_URL . 'admin/css/kiss-woo-debug.css',
+            array(),
+            KISS_WOO_COS_VERSION
+        );
+
+        wp_enqueue_script(
+            'kiss-woo-debug',
+            KISS_WOO_COS_URL . 'admin/js/kiss-woo-debug.js',
+            array( 'jquery' ),
+            KISS_WOO_COS_VERSION,
+            true
+        );
+
+        wp_localize_script(
+            'kiss-woo-debug',
+            'kissWooDebug',
+            array(
+                'nonce' => wp_create_nonce( 'kiss_woo_debug' ),
+                'i18n'  => array(
+                    'noTraces' => __( 'No trace history. Perform a search to see traces.', 'kiss-woo-customer-order-search' ),
+                ),
+            )
+        );
+    }
+
+    /**
      * Render debug panel page.
      */
     public function render_page(): void {
-        $nonce = wp_create_nonce( 'kiss_woo_debug' );
         ?>
         <div class="wrap kiss-woo-debug-panel">
             <h1><?php esc_html_e( 'KISS Search Debug Panel', 'kiss-woo-customer-order-search' ); ?></h1>
@@ -106,153 +143,6 @@ class KISS_Woo_Debug_Panel {
                 </div>
             </div>
         </div>
-
-        <?php $this->render_styles(); ?>
-        <?php $this->render_scripts( $nonce ); ?>
-        <?php
-    }
-
-    /**
-     * Render inline styles.
-     */
-    private function render_styles(): void {
-        ?>
-        <style>
-            .kiss-woo-debug-panel { max-width: 1200px; }
-            .kiss-debug-controls { margin: 20px 0; display: flex; gap: 10px; align-items: center; }
-            .kiss-debug-status { margin: 20px 0; }
-            .kiss-debug-status table { max-width: 500px; }
-            .kiss-status-ok { color: #46b450; }
-            .kiss-status-warn { color: #ffb900; }
-            .kiss-status-info { color: #00a0d2; }
-            .kiss-debug-traces { margin: 20px 0; }
-            .kiss-debug-request {
-                background: #fff;
-                border: 1px solid #ccd0d4;
-                margin-bottom: 10px;
-                border-radius: 4px;
-            }
-            .kiss-debug-request-header {
-                padding: 10px 15px;
-                background: #f8f9fa;
-                border-bottom: 1px solid #ccd0d4;
-                cursor: pointer;
-                display: flex;
-                justify-content: space-between;
-            }
-            .kiss-debug-request-header:hover { background: #f0f0f1; }
-            .kiss-debug-request-body { padding: 15px; display: none; }
-            .kiss-debug-request.expanded .kiss-debug-request-body { display: block; }
-            .kiss-trace-item {
-                font-family: monospace;
-                font-size: 12px;
-                padding: 5px 10px;
-                border-left: 3px solid #ccc;
-                margin: 5px 0;
-            }
-            .kiss-trace-item.level-info { border-color: #00a0d2; }
-            .kiss-trace-item.level-warn { border-color: #ffb900; }
-            .kiss-trace-item.level-error { border-color: #dc3232; }
-            .kiss-trace-time { color: #666; }
-            .kiss-trace-component { color: #0073aa; font-weight: bold; }
-            .kiss-trace-action { color: #23282d; }
-            .kiss-trace-context { color: #666; margin-left: 20px; }
-        </style>
-        <?php
-    }
-
-    /**
-     * Render inline JavaScript.
-     *
-     * @param string $nonce Security nonce.
-     */
-    private function render_scripts( string $nonce ): void {
-        ?>
-        <script>
-        jQuery(function($) {
-            var autoRefreshInterval = null;
-            var nonce = <?php echo wp_json_encode( $nonce ); ?>;
-
-            function loadTraces() {
-                $.post(ajaxurl, {
-                    action: 'kiss_woo_debug_get_traces',
-                    nonce: nonce
-                }, function(response) {
-                    if (response.success) {
-                        renderTraces(response.data);
-                    }
-                });
-            }
-
-            function renderTraces(history) {
-                var $container = $('#kiss-debug-traces-container');
-
-                if (!history || Object.keys(history).length === 0) {
-                    $container.html('<p><?php echo esc_js( __( 'No trace history. Perform a search to see traces.', 'kiss-woo-customer-order-search' ) ); ?></p>');
-                    return;
-                }
-
-                var html = '';
-                var keys = Object.keys(history).reverse();
-
-                keys.forEach(function(requestId) {
-                    var request = history[requestId];
-                    html += '<div class="kiss-debug-request" data-id="' + requestId + '">';
-                    html += '<div class="kiss-debug-request-header">';
-                    html += '<span><strong>' + request.method + '</strong> ' + escapeHtml(request.url) + '</span>';
-                    html += '<span>' + request.total_ms + 'ms - ' + request.timestamp + '</span>';
-                    html += '</div>';
-                    html += '<div class="kiss-debug-request-body">';
-
-                    request.traces.forEach(function(trace) {
-                        html += '<div class="kiss-trace-item level-' + trace.level + '">';
-                        html += '<span class="kiss-trace-time">[' + trace.elapsed_ms + 'ms]</span> ';
-                        html += '<span class="kiss-trace-component">' + trace.component + '</span>';
-                        html += '::<span class="kiss-trace-action">' + trace.action + '</span>';
-                        if (trace.context && Object.keys(trace.context).length > 0) {
-                            html += '<div class="kiss-trace-context">' + escapeHtml(JSON.stringify(trace.context)) + '</div>';
-                        }
-                        html += '</div>';
-                    });
-
-                    html += '</div></div>';
-                });
-
-                $container.html(html);
-            }
-
-            function escapeHtml(text) {
-                var div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            $(document).on('click', '.kiss-debug-request-header', function() {
-                $(this).closest('.kiss-debug-request').toggleClass('expanded');
-            });
-
-            $('#kiss-debug-refresh').on('click', loadTraces);
-
-            $('#kiss-debug-clear').on('click', function() {
-                $.post(ajaxurl, {
-                    action: 'kiss_woo_debug_clear_traces',
-                    nonce: nonce
-                }, function() {
-                    loadTraces();
-                });
-            });
-
-            $('#kiss-debug-auto-refresh').on('change', function() {
-                if ($(this).is(':checked')) {
-                    autoRefreshInterval = setInterval(loadTraces, 5000);
-                } else {
-                    clearInterval(autoRefreshInterval);
-                }
-            });
-
-            loadTraces();
-        });
-        </script>
         <?php
     }
 

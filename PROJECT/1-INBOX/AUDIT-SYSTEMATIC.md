@@ -15,9 +15,9 @@
   - [x] 3.3 - Unify Debug Logging
   - [x] 2.2 - Create Utility Class for HPOS Detection
 
-- [ ] **MEDIUM PRIORITY** (Medium-High Effort / Medium Impact)
-  - [ ] 1.2 - Extract Inline CSS/JS to Separate Files
-  - [ ] 1.1 - Extract AJAX Handler to Dedicated Class
+- [x] **MEDIUM PRIORITY** (Medium-High Effort / Medium Impact) - **COMPLETED**
+  - [x] 1.2 - Extract Inline CSS/JS to Separate Files
+  - [x] 1.1 - Extract AJAX Handler to Dedicated Class
 
 - [ ] **LOWER PRIORITY** (Higher Effort / Lower Impact)
   - [ ] 4.1 - Add Explicit State Machine for AJAX Search
