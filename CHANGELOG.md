@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-01-09
+
+### Added
+- **PHPUnit Test Suite**: Added unit tests for `KISS_Woo_Order_Resolver` and `KISS_Woo_COS_Search::search_customers()` to catch regressions during refactoring.
+- **GitHub Actions CI**: Automated testing workflow runs on push/PR to main branches. Tests against PHP 7.4, 8.0, 8.1, and 8.2.
+- **Test Infrastructure**: Added `composer.json`, `phpunit.xml`, and test bootstrap with Brain\Monkey for WordPress function mocking.
+
+### Technical Details
+- Tests use Brain\Monkey and Mockery for WordPress/WooCommerce mocking
+- Run tests locally: `composer install && composer test`
+- Tests cover: order number pattern matching, cache behavior, order resolution, customer search output structure, and XSS protection
+
+---
+
 ## [1.1.4] - 2026-01-09
 
 ### Added
