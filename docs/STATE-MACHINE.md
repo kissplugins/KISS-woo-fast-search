@@ -72,9 +72,11 @@ Key features:
 ```
 IDLE → SEARCHING
 SEARCHING → REDIRECTING_ORDER | REDIRECTING_SEARCH | IDLE (abort)
-REDIRECTING_ORDER → (page navigation)
-REDIRECTING_SEARCH → (page navigation)
+REDIRECTING_ORDER → IDLE (timeout fallback) | (page navigation)
+REDIRECTING_SEARCH → IDLE (timeout fallback) | (page navigation)
 ```
+
+**Note**: Redirect states have a 5-second safety timeout that resets to IDLE if navigation is blocked (e.g., popup blocker).
 
 ### Implementation
 
@@ -86,6 +88,8 @@ Key features:
 - Automatic fallback to search page on timeout/error
 - Different button text for order vs search redirects
 - Request abortion on duplicate submissions
+- **5-second safety timeout** for redirect states (prevents stuck UI if navigation blocked)
+- Automatic cleanup on successful page navigation
 
 ## Debugging
 
@@ -127,6 +131,10 @@ With debug mode enabled, you'll see:
 5. **Request Abortion**
    - Submit slow search → Submit new search → Verify old request aborted
    - Expected: Old XHR aborted, new request starts
+
+6. **Timeout Fallback (Toolbar Only)**
+   - Block popups in browser → Submit search → Wait 5 seconds
+   - Expected: UI resets to IDLE state after 5 seconds if navigation blocked
 
 ## Future Enhancements
 

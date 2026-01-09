@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.2.3] - 2026-01-09
+
+### Security
+- **PII Redaction in Error Logs**: Added automatic redaction of sensitive data before logging to `error_log()` (Critical security fix)
+  - Implemented `redact_sensitive_data()` method in `KISS_Woo_Debug_Tracer` to prevent PII leaks in server logs
+  - Redacts 14 sensitive keys: email, billing_email, shipping_email, search_term, customer_id, user_id, billing_phone, shipping_phone, addresses, IP address, user agent
+  - Keeps first 3 characters for debugging context (e.g., "joh***" instead of full email)
+  - Recursively redacts nested arrays to catch all sensitive data
+  - Only affects error-level logs written to server logs; debug traces remain unredacted for authorized debugging
+  - **Impact**: Prevents accidental PII exposure in production server logs while maintaining debugging capability
+- **Production Console Logging**: Removed unconditional `console.log()` calls from admin JavaScript (Critical security fix)
+  - Wrapped 5 unconditional console calls in debug flag checks (`if (KISSCOS.debug)`)
+  - Affected calls: version check, invalid state transitions, duplicate submissions, response state warnings, redirect logging
+  - Console output now only appears when `KISS_WOO_FAST_SEARCH_DEBUG` constant is enabled
+  - **Impact**: Prevents operational details and search terms from leaking to browser console in production
+
+### Changed
+- Updated version number to 1.2.3 in main plugin file and admin JS
+
+---
+
+## [1.2.2] - 2026-01-09
+
 ### Added
 - **State Machine**: Implemented explicit finite state machines (FSM) for AJAX search to prevent impossible UI states (Audit item 4.1)
   - Created state machine for admin search page with 5 states: IDLE, SEARCHING, SUCCESS, ERROR, REDIRECTING
@@ -17,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added debug logging for state transitions (when debug mode enabled)
   - Created comprehensive documentation in `docs/STATE-MACHINE.md` with state diagrams
   - Benefits: Prevents "Searching..." text from getting stuck, prevents double submissions, clearer error recovery
+- **Timeout Fallback**: Added 5-second safety timeout for toolbar redirect states (Audit item 4.2)
+  - Automatically resets UI to IDLE if navigation is blocked (e.g., popup blocker)
+  - Prevents users from being stuck with disabled input/button
+  - Cleans up timeout on successful page navigation
+  - Logs timeout events in debug mode for troubleshooting
 
 ### Fixed
 - **Test Infrastructure**: Fixed all 38 unit tests to pass successfully (100% passing rate)

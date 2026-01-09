@@ -7,7 +7,7 @@
     'use strict';
 
     if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-        console.log('🔍 KISS Toolbar loaded - Version 1.2.0 (explicit state machine)');
+        console.log('🔍 KISS Toolbar loaded - Version 1.2.1 (state machine + timeout fallback)');
     }
 
     const toolbar = document.getElementById('floating-search-toolbar');
@@ -37,6 +37,7 @@
 
     let currentState = ToolbarState.IDLE;
     let currentXhr = null;
+    let safetyTimeout = null;
 
     /**
      * Transition to a new state with validation.
@@ -45,8 +46,8 @@
         const validTransitions = {
             'idle': ['searching'],
             'searching': ['redirecting_order', 'redirecting_search', 'idle'],
-            'redirecting_order': [],
-            'redirecting_search': []
+            'redirecting_order': ['idle'], // Allow recovery from stuck redirect
+            'redirecting_search': ['idle']  // Allow recovery from stuck redirect
         };
 
         if (!validTransitions[currentState] || validTransitions[currentState].indexOf(newState) === -1) {
@@ -58,8 +59,30 @@
             console.log('🔄 Toolbar state transition:', currentState, '→', newState);
         }
 
+        // Clear any existing safety timeout
+        if (safetyTimeout) {
+            clearTimeout(safetyTimeout);
+            safetyTimeout = null;
+        }
+
         currentState = newState;
         updateUIForState();
+
+        // Set safety timeout for redirect states
+        // If navigation is blocked (popup blocker, etc.), reset UI after 5 seconds
+        if (newState === ToolbarState.REDIRECTING_ORDER || newState === ToolbarState.REDIRECTING_SEARCH) {
+            safetyTimeout = setTimeout(function() {
+                if (currentState === ToolbarState.REDIRECTING_ORDER || currentState === ToolbarState.REDIRECTING_SEARCH) {
+                    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                        console.warn('⚠️ Toolbar: Navigation timeout - resetting UI (possible popup blocker)');
+                    }
+                    currentState = ToolbarState.IDLE; // Force transition
+                    updateUIForState();
+                    safetyTimeout = null;
+                }
+            }, 5000); // 5 second safety timeout
+        }
+
         return true;
     }
 
@@ -199,6 +222,14 @@
         if (e.key === 'Enter') {
             e.preventDefault();
             handleSearch();
+        }
+    });
+
+    // Clear safety timeout on successful navigation
+    window.addEventListener('beforeunload', function() {
+        if (safetyTimeout) {
+            clearTimeout(safetyTimeout);
+            safetyTimeout = null;
         }
     });
 

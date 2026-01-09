@@ -52,6 +52,56 @@ class KISS_Woo_Debug_Tracer {
     }
 
     /**
+     * Redact sensitive data from context before logging to error_log.
+     *
+     * Prevents PII leaks in server logs by redacting known sensitive keys.
+     *
+     * @param array $context Context data to redact.
+     * @return array Redacted context.
+     */
+    private static function redact_sensitive_data( array $context ): array {
+        $sensitive_keys = array(
+            'email',
+            'billing_email',
+            'shipping_email',
+            'search_term',
+            'customer_id',
+            'user_id',
+            'billing_phone',
+            'shipping_phone',
+            'billing_address_1',
+            'billing_address_2',
+            'shipping_address_1',
+            'shipping_address_2',
+            'ip_address',
+            'user_agent',
+        );
+
+        $redacted = $context;
+
+        foreach ( $sensitive_keys as $key ) {
+            if ( isset( $redacted[ $key ] ) ) {
+                // Keep first 3 chars for debugging context, redact rest
+                $value = (string) $redacted[ $key ];
+                if ( strlen( $value ) > 3 ) {
+                    $redacted[ $key ] = substr( $value, 0, 3 ) . '***';
+                } else {
+                    $redacted[ $key ] = '***';
+                }
+            }
+        }
+
+        // Recursively redact nested arrays
+        foreach ( $redacted as $key => $value ) {
+            if ( is_array( $value ) ) {
+                $redacted[ $key ] = self::redact_sensitive_data( $value );
+            }
+        }
+
+        return $redacted;
+    }
+
+    /**
      * Log a trace event.
      *
      * @param string $component Component name (e.g., 'OrderResolver', 'AjaxHandler').
@@ -79,7 +129,9 @@ class KISS_Woo_Debug_Tracer {
         self::$traces[] = $trace;
 
         // Also write errors to error_log for server logs.
+        // SECURITY: Redact PII before logging to prevent data leaks.
         if ( 'error' === $level ) {
+            $redacted_context = self::redact_sensitive_data( $context );
             // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
             error_log(
                 sprintf(
@@ -87,7 +139,7 @@ class KISS_Woo_Debug_Tracer {
                     strtoupper( $level ),
                     $component,
                     $action,
-                    wp_json_encode( $context )
+                    wp_json_encode( $redacted_context )
                 )
             );
         }

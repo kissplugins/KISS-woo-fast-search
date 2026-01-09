@@ -1,6 +1,8 @@
 jQuery(function ($) {
-    // Version check - helps identify if cached JS is being used
-    console.log('🔍 KISS Search JS loaded - Version 1.2.0 (explicit state machine)');
+    // Version check - helps identify if cached JS is being used (debug mode only)
+    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+        console.log('🔍 KISS Search JS loaded - Version 1.2.3 (explicit state machine)');
+    }
 
     var $form   = $('#kiss-cos-search-form');
     var $input  = $('#kiss-cos-search-input');
@@ -41,7 +43,9 @@ jQuery(function ($) {
         };
 
         if (!validTransitions[currentState] || validTransitions[currentState].indexOf(newState) === -1) {
-            console.warn('⚠️ Invalid state transition:', currentState, '→', newState);
+            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                console.warn('⚠️ Invalid state transition:', currentState, '→', newState);
+            }
             return false;
         }
 
@@ -256,7 +260,9 @@ jQuery(function ($) {
 
         // Prevent double submission
         if (currentState === SearchState.SEARCHING || currentState === SearchState.REDIRECTING) {
-            console.warn('⚠️ Search already in progress, ignoring duplicate submission');
+            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                console.warn('⚠️ Search already in progress, ignoring duplicate submission');
+            }
             return;
         }
 
@@ -285,7 +291,9 @@ jQuery(function ($) {
         }).done(function (resp) {
             // Only process if still in SEARCHING state
             if (currentState !== SearchState.SEARCHING) {
-                console.warn('⚠️ Response received but state is no longer SEARCHING:', currentState);
+                if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                    console.warn('⚠️ Response received but state is no longer SEARCHING:', currentState);
+                }
                 return;
             }
 
@@ -307,11 +315,13 @@ jQuery(function ($) {
 
             // Handle direct order redirect when searching for an order number.
             if (resp.data.should_redirect_to_order && resp.data.redirect_url) {
-                console.log('🔄 KISS: Redirecting to order...', {
-                    redirect_url: resp.data.redirect_url,
-                    should_redirect: resp.data.should_redirect_to_order,
-                    orders: resp.data.orders
-                });
+                if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                    console.log('🔄 KISS: Redirecting to order...', {
+                        redirect_url: resp.data.redirect_url,
+                        should_redirect: resp.data.should_redirect_to_order,
+                        orders: resp.data.orders
+                    });
+                }
 
                 transitionTo(SearchState.REDIRECTING);
 
