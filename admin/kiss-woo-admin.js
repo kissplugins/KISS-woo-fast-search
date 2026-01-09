@@ -64,16 +64,48 @@ jQuery(function ($) {
         return html;
     }
 
+    /**
+     * Render a single order match result.
+     */
+    function renderOrderMatch(order) {
+        var html = '<div class="kiss-cos-order-match">';
+        html += '<div class="kiss-cos-order-match-header">';
+        html += '<h2>Order Found: #' + escapeHtml(order.order_number) + '</h2>';
+        html += '</div>';
+        html += '<div class="kiss-cos-order-match-details">';
+        html += '<table class="kiss-cos-order-details-table">';
+        html += '<tr><th>Order Number</th><td>' + escapeHtml(order.order_number) + '</td></tr>';
+        html += '<tr><th>Status</th><td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td></tr>';
+        html += '<tr><th>Total</th><td>' + escapeHtml(order.total_display) + '</td></tr>';
+        html += '<tr><th>Date</th><td>' + escapeHtml(order.date_display) + '</td></tr>';
+        html += '<tr><th>Customer</th><td>' + escapeHtml(order.customer.name) + ' &lt;' + escapeHtml(order.customer.email) + '&gt;</td></tr>';
+        html += '</table>';
+        html += '<div class="kiss-cos-order-match-actions">';
+        html += '<a href="' + escapeHtml(order.view_url) + '" class="button button-primary" target="_blank">View Order</a>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        return html;
+    }
+
     function renderResults(data) {
         var customers = data.customers || [];
         var guestOrders = data.guest_orders || [];
+        var orders = data.orders || [];
 
-        if (!customers.length && !guestOrders.length) {
+        if (!customers.length && !guestOrders.length && !orders.length) {
             $results.html('<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
             return;
         }
 
         var html = '';
+
+        // Show order matches first (if any)
+        if (orders.length) {
+            orders.forEach(function(order) {
+                html += renderOrderMatch(order);
+            });
+        }
 
         customers.forEach(function (cust) {
             html += '<div class="kiss-cos-customer">';
@@ -145,6 +177,22 @@ jQuery(function ($) {
                 $results.html('<p><strong>' + msg + '</strong></p>');
                 return;
             }
+
+            // Log debug data to console if present
+            if (resp.data.debug) {
+                console.group('KISS Search Debug');
+                console.log('Search time:', resp.data.search_time_ms + 'ms');
+                console.log('Traces:', resp.data.debug.traces);
+                console.log('Memory peak:', resp.data.debug.memory_peak_mb + 'MB');
+                console.groupEnd();
+            }
+
+            // Handle direct order redirect (optional - can be disabled)
+            // Uncomment if you want auto-redirect to orders:
+            // if (resp.data.should_redirect_to_order && resp.data.redirect_url) {
+            //     window.location.href = resp.data.redirect_url;
+            //     return;
+            // }
 
             renderResults(resp.data);
 
