@@ -81,16 +81,6 @@ class KISS_Woo_COS_Admin_Page {
             return;
         }
 
-        // wp_enqueue_style(
-        //     'kiss-woo-cos-admin',
-        //     KISS_WOO_COS_URL . 'admin/kiss-admin.css',
-        //     array(),
-        //     KISS_WOO_COS_VERSION
-        // );
-
-        // If you don't create a CSS file, this will just 404 harmlessly.
-        // You can also remove the above and inline styles in render_page().
-
         wp_enqueue_script(
             'kiss-woo-cos-admin',
             KISS_WOO_COS_URL . 'admin/kiss-woo-admin.js',
@@ -126,14 +116,14 @@ class KISS_Woo_COS_Admin_Page {
             <h1><?php esc_html_e( 'KISS - Faster Customer & Order Search', 'kiss-woo-customer-order-search' ); ?></h1>
 
             <p class="description">
-                <?php esc_html_e( 'Enter a customer email, partial email, or name to quickly find their account and orders.', 'kiss-woo-customer-order-search' ); ?>
+                <?php esc_html_e( 'Enter an order ID, customer email, partial email, or name to quickly find their account and orders.', 'kiss-woo-customer-order-search' ); ?>
             </p>
 
             <form id="kiss-cos-search-form" class="kiss-cos-search-form" action="#" method="get" autocomplete="off">
                 <input type="text"
                        id="kiss-cos-search-input"
                        class="regular-text"
-                       placeholder="<?php esc_attr_e( 'Type email or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
+                       placeholder="<?php esc_attr_e( 'Type order ID, email, or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
                 <button type="submit" class="button button-primary">
                     <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
                 </button>

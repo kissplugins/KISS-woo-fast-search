@@ -15,13 +15,13 @@ class KISS_Woo_COS_Search {
     /**
      * Whether debug logging is enabled.
      *
-     * Default: disabled. Enable by defining `KISS_WOO_COS_DEBUG` as true.
+     * Default: disabled. Enable by defining `KISS_WOO_FAST_SEARCH_DEBUG` as true.
      *
      * @return bool
      */
     protected function is_debug_enabled() {
-        if ( defined( 'KISS_WOO_COS_DEBUG' ) ) {
-            return (bool) KISS_WOO_COS_DEBUG;
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) ) {
+            return (bool) KISS_WOO_FAST_SEARCH_DEBUG;
         }
 
         return false;
@@ -216,8 +216,10 @@ class KISS_Woo_COS_Search {
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         if ( $exists !== $table ) {
             $this->last_lookup_debug['enabled'] = false;
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
+            if ( $this->is_debug_enabled() ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
+            }
             return array();
         }
 
@@ -256,15 +258,19 @@ class KISS_Woo_COS_Search {
                 $sql = $wpdb->remove_placeholder_escape( $sql );
             }
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+            if ( $this->is_debug_enabled() ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+            }
 
             $t_start = microtime( true );
             $ids = $wpdb->get_col( $sql );
             $t_elapsed = round( ( microtime( true ) - $t_start ) * 1000, 2 );
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+            if ( $this->is_debug_enabled() ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+            }
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
@@ -398,16 +404,20 @@ class KISS_Woo_COS_Search {
 
         $t_counts_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( $this->is_debug_enabled() ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         try {
             if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
                 $counts = $this->get_order_counts_hpos( $user_ids );
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+                if ( $this->is_debug_enabled() ) {
+                    // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                    error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+                }
                 return $counts + $order_counts;
             }
         } catch ( Exception $e ) {
@@ -416,64 +426,12 @@ class KISS_Woo_COS_Search {
 
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( $this->is_debug_enabled() ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         return $legacy_counts + $order_counts;
-    }
-
-    /**
-     * Get total orders for a given customer ID.
-     * Optimized to use direct SQL COUNT query instead of loading all order IDs.
-     *
-     * @param int $user_id Customer user ID.
-     *
-     * @return int Number of orders for the customer.
-     */
-    protected function get_order_count_for_customer( $user_id ) {
-        global $wpdb;
-
-        // Validate user ID
-        if ( empty( $user_id ) || ! is_numeric( $user_id ) ) {
-            return 0;
-        }
-
-        $user_id = (int) $user_id;
-
-        try {
-            // Check if HPOS (High-Performance Order Storage) is enabled (WooCommerce 7.1+)
-            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
-                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
-                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
-
-                // Use HPOS tables for better performance
-                $orders_table = $wpdb->prefix . 'wc_orders';
-
-                // Build status list
-                $statuses = array_keys( wc_get_order_statuses() );
-                if ( empty( $statuses ) ) {
-                    return 0;
-                }
-
-                $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
-
-                // Prepare and execute COUNT query
-                $query = $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$orders_table}
-                     WHERE customer_id = %d
-                     AND status IN ({$status_placeholders})",
-                    array_merge( array( $user_id ), $statuses )
-                );
-
-                $count = $wpdb->get_var( $query );
-                return $count !== null ? (int) $count : 0;
-            }
-        } catch ( Exception $e ) {
-            // Fall through to legacy method if HPOS check fails
-        }
-
-        // Fallback to legacy posts table for older WooCommerce or if HPOS not enabled
-        return $this->get_order_count_legacy( $user_id );
     }
 
     /**
@@ -920,70 +878,6 @@ class KISS_Woo_COS_Search {
     }
 
     /**
-     * Get recent orders for a given customer ID + email.
-     * Returns simplified data suitable for JSON.
-     *
-     * IMPORTANT: Avoid calling this in a loop for many customers.
-     * Doing so reintroduces an N+1 query pattern (one `wc_get_orders()` call per customer).
-     * Prefer `get_recent_orders_for_customers()` which batches the fetch.
-     *
-     * @deprecated Internal helper; use `get_recent_orders_for_customers()` for multi-customer searches.
-     *
-     * @param int    $user_id
-     * @param string $email
-     *
-     * @return array
-     */
-    protected function get_recent_orders_for_customer( $user_id, $email ) {
-        // Tripwire: if this gets called multiple times in a single request, it likely indicates
-        // an accidental N+1 reintroduction. Log a warning (debug default-on) to make it obvious.
-        static $call_count = 0;
-        $call_count++;
-        if ( $call_count === 2 ) {
-            $this->debug_log(
-                'warning_potential_n_plus_one',
-                array(
-                    'hint'  => 'get_recent_orders_for_customer() called multiple times; prefer get_recent_orders_for_customers().',
-                    'count' => $call_count,
-                )
-            );
-        }
-
-        if ( ! function_exists( 'wc_get_orders' ) ) {
-            return array();
-        }
-
-        $args = array(
-            'limit'   => 10,
-            'orderby' => 'date',
-            'order'   => 'DESC',
-            'status'  => array_keys( wc_get_order_statuses() ),
-        );
-
-        if ( $user_id ) {
-            $args['customer'] = $user_id;
-        }
-
-        $orders = wc_get_orders( $args );
-
-        if ( empty( $orders ) && empty( $user_id ) && is_email( $email ) ) {
-            $args['customer'] = $email;
-            $orders           = wc_get_orders( $args );
-        }
-
-        $results = array();
-
-        if ( ! empty( $orders ) ) {
-            foreach ( $orders as $order ) {
-                /** @var WC_Order $order */
-                $results[] = $this->format_order_for_output( $order );
-            }
-        }
-
-        return $results;
-    }
-
-    /**
      * Fetch recent orders for multiple customers in one query.
      *
      * @param array $user_ids Customer IDs.
@@ -1010,8 +904,10 @@ class KISS_Woo_COS_Search {
 
         $t_orders_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( $this->is_debug_enabled() ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
@@ -1048,8 +944,10 @@ class KISS_Woo_COS_Search {
         $rows = $wpdb->get_results( $sql );
         $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( $this->is_debug_enabled() ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         if ( empty( $rows ) ) {
             return $results;
@@ -1082,8 +980,10 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( $this->is_debug_enabled() ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         // IMPORTANT: Avoid wc_get_orders() - it triggers expensive hooks/plugins on large sites.
         // Use direct SQL to fetch only the fields we need for display.
@@ -1091,8 +991,10 @@ class KISS_Woo_COS_Search {
         $order_data = $this->get_order_data_via_sql( $all_order_ids );
         $t_hydrate_elapsed = round( ( microtime( true ) - $t_hydrate_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( $this->is_debug_enabled() ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         if ( empty( $order_data ) ) {
             return $results;

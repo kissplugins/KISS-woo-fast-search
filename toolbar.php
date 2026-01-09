@@ -15,7 +15,23 @@ class KISS_Woo_COS_Floating_Search_Bar {
 
     private const SCRIPT_HANDLE = 'kiss-woo-cos-floating-toolbar';
 
+    /**
+     * Whether the toolbar is hidden via settings.
+     * Cached to avoid repeated checks.
+     *
+     * @var bool
+     */
+    private bool $is_hidden;
+
     public function __construct() {
+        // Check once at initialization and cache the result.
+        $this->is_hidden = $this->check_if_toolbar_hidden();
+
+        // Short-circuit all hooks if toolbar is hidden.
+        if ( $this->is_hidden ) {
+            return;
+        }
+
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_head', array( $this, 'output_css' ) );
         add_action( 'admin_footer', array( $this, 'render_toolbar' ) );
@@ -27,7 +43,7 @@ class KISS_Woo_COS_Floating_Search_Bar {
      *
      * @return bool
      */
-    private function is_toolbar_hidden() {
+    private function check_if_toolbar_hidden() {
         if ( ! class_exists( 'KISS_Woo_COS_Settings' ) ) {
             return false;
         }
@@ -36,11 +52,6 @@ class KISS_Woo_COS_Floating_Search_Bar {
     
     public function enqueue_assets(): void {
         if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
-            return;
-        }
-
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
             return;
         }
 
@@ -56,16 +67,14 @@ class KISS_Woo_COS_Floating_Search_Bar {
             'floatingSearchBar',
             [
                 'searchUrl' => admin_url( 'admin.php?page=kiss-woo-customer-order-search' ),
+                'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+                'nonce'     => wp_create_nonce( 'kiss_woo_cos_search' ),
                 'minChars'  => 2,
             ]
         );
     }
     
     public function output_css(): void {
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
-            return;
-        }
         ?>
         <style>
             #floating-search-toolbar {
@@ -114,16 +123,13 @@ class KISS_Woo_COS_Floating_Search_Bar {
             .floating-search-toolbar__section--search {
                 margin-left: auto;
             }
-            
-            .floating-search-toolbar__label {
-                color: #c3c4c7;
+
+            .floating-search-toolbar__speed-label {
+                color:rgb(240, 240, 241);
                 font-size: 13px;
-                font-weight: 400;
-                padding: 0 12px;
-                height: 100%;
-                display: flex;
-                align-items: center;
-                border-right: 1px solid #333;
+                font-weight: 600;
+                margin-right: 10px;
+                white-space: nowrap;
             }
             
             /* Search input styled like WP admin bar */
@@ -158,7 +164,7 @@ class KISS_Woo_COS_Floating_Search_Bar {
             .floating-search-submit {
                 background: transparent;
                 border: none;
-                color: #c3c4c7;
+                color:rgb(240, 240, 241);
                 cursor: pointer;
                 font-size: 13px;
                 height: 32px;
@@ -177,10 +183,14 @@ class KISS_Woo_COS_Floating_Search_Bar {
                 .floating-search-submit {
                     height: 46px;
                 }
-                
+
                 .floating-search-input {
                     height: 34px;
                     width: 150px;
+                }
+
+                .floating-search-toolbar__speed-label {
+                    display: none;
                 }
             }
         </style>
@@ -188,14 +198,14 @@ class KISS_Woo_COS_Floating_Search_Bar {
     }
     
     public function output_js(): void {
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
-            return;
-        }
         ?>
         <script>
         (function($) {
             'use strict';
+
+            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                console.log('🔍 KISS Toolbar loaded - Version 1.1.3 (direct order search enabled)');
+            }
 
             const toolbar = document.getElementById('floating-search-toolbar');
             const input = document.getElementById('floating-search-input');
@@ -204,10 +214,13 @@ class KISS_Woo_COS_Floating_Search_Bar {
             if (!toolbar || !input || !submitBtn) {
                 return;
             }
-            
+
             // Add class to body for CSS adjustments
             document.body.classList.add('floating-toolbar-active');
-            
+
+            // Store original button text
+            const originalBtnText = submitBtn.textContent;
+
             function handleSearch() {
                 const searchTerm = input.value.trim();
                 if (!searchTerm) {
@@ -220,24 +233,72 @@ class KISS_Woo_COS_Floating_Search_Bar {
                     return;
                 }
 
-                // Redirect to the KISS search results page with the query param.
+                // Show loading state
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Searching...';
+                input.disabled = true;
+
+                // Try AJAX search first (fast path for direct order matches)
+                $.ajax({
+                    url: floatingSearchBar.ajaxUrl,
+                    method: 'POST',
+                    dataType: 'json',
+                    data: {
+                        action: 'kiss_woo_customer_search',
+                        nonce: floatingSearchBar.nonce,
+                        q: searchTerm
+                    },
+                    timeout: 3000 // 3 second timeout
+                }).done(function(resp) {
+                    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                        console.log('🔍 KISS Toolbar: AJAX response', resp);
+                    }
+
+                    // If we got a direct order match, redirect immediately
+                    if (resp && resp.success && resp.data && resp.data.should_redirect_to_order && resp.data.redirect_url) {
+                        if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                            console.log('✅ KISS Toolbar: Direct order match found, redirecting to:', resp.data.redirect_url);
+                        }
+                        window.location.href = resp.data.redirect_url;
+                        return;
+                    }
+
+                    // Otherwise, fall back to search page
+                    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                        console.log('📋 KISS Toolbar: No direct match, going to search page');
+                    }
+                    fallbackToSearchPage(searchTerm);
+
+                }).fail(function(xhr, status, error) {
+                    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                        console.log('⚠️ KISS Toolbar: AJAX failed, falling back to search page', error);
+                    }
+                    // On error, fall back to search page
+                    fallbackToSearchPage(searchTerm);
+                });
+            }
+
+            function fallbackToSearchPage(searchTerm) {
                 const baseUrl = (floatingSearchBar && floatingSearchBar.searchUrl) ? floatingSearchBar.searchUrl : '';
                 if (!baseUrl) {
+                    // Reset UI
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalBtnText;
+                    input.disabled = false;
                     return;
                 }
-
                 window.location.href = baseUrl + '&q=' + encodeURIComponent(searchTerm);
             }
-            
+
             submitBtn.addEventListener('click', handleSearch);
-            
+
             input.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     handleSearch();
                 }
             });
-            
+
         })(jQuery);
         </script>
         <?php
@@ -248,29 +309,22 @@ class KISS_Woo_COS_Floating_Search_Bar {
             return;
         }
 
-        // Check if toolbar is globally hidden via settings.
-        if ( $this->is_toolbar_hidden() ) {
-            return;
-        }
         ?>
         <div id="floating-search-toolbar">
-            <div class="floating-search-toolbar__section">
-                <span class="floating-search-toolbar__label">
-                    <?php esc_html_e( 'KISS Search', 'kiss-woo-customer-order-search' ); ?>
-                </span>
-            </div>
-            
             <div class="floating-search-toolbar__section floating-search-toolbar__section--search">
-                <input 
-                    type="text" 
-                    id="floating-search-input" 
+                <span class="floating-search-toolbar__speed-label">
+                    <?php esc_html_e( 'Ultra Fast Search (3-4x faster)', 'kiss-woo-customer-order-search' ); ?>
+                </span>
+                <input
+                    type="text"
+                    id="floating-search-input"
                     class="floating-search-input"
-                    placeholder="<?php esc_attr_e( 'Search email or name…', 'kiss-woo-customer-order-search' ); ?>"
+                    placeholder="<?php esc_attr_e( 'Search order ID, email, or name…', 'kiss-woo-customer-order-search' ); ?>"
                     autocomplete="off"
                 />
-                <button 
-                    type="button" 
-                    id="floating-search-submit" 
+                <button
+                    type="button"
+                    id="floating-search-submit"
                     class="floating-search-submit"
                 >
                     <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
