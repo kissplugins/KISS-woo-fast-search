@@ -1,110 +1,9 @@
 jQuery(function ($) {
-    // Version check - helps identify if cached JS is being used (debug mode only)
-    if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-        console.log('🔍 KISS Search JS loaded - Version 1.2.3 (explicit state machine)');
-    }
-
     var $form   = $('#kiss-cos-search-form');
     var $input  = $('#kiss-cos-search-input');
     var $status = $('#kiss-cos-search-status');
     var $results = $('#kiss-cos-results');
     var $searchTime = $('#kiss-cos-search-time');
-
-    /**
-     * Explicit State Machine for Search UI
-     * Prevents impossible states and ensures consistent UI behavior.
-     */
-    var SearchState = {
-        IDLE: 'idle',
-        SEARCHING: 'searching',
-        SUCCESS: 'success',
-        ERROR: 'error',
-        REDIRECTING: 'redirecting'
-    };
-
-    var currentState = SearchState.IDLE;
-    var stateData = {
-        searchTerm: '',
-        startTime: 0,
-        xhr: null
-    };
-
-    /**
-     * Transition to a new state with validation.
-     * Prevents invalid state transitions and logs them for debugging.
-     */
-    function transitionTo(newState, data) {
-        var validTransitions = {
-            'idle': ['searching'],
-            'searching': ['success', 'error', 'redirecting', 'idle'],
-            'success': ['idle', 'searching'],
-            'error': ['idle', 'searching'],
-            'redirecting': []
-        };
-
-        if (!validTransitions[currentState] || validTransitions[currentState].indexOf(newState) === -1) {
-            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-                console.warn('⚠️ Invalid state transition:', currentState, '→', newState);
-            }
-            return false;
-        }
-
-        if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-            console.log('🔄 State transition:', currentState, '→', newState, data || {});
-        }
-
-        currentState = newState;
-
-        // Update state data
-        if (data) {
-            Object.assign(stateData, data);
-        }
-
-        // Update UI based on new state
-        updateUIForState();
-
-        return true;
-    }
-
-    /**
-     * Update UI elements based on current state.
-     * Centralizes all UI updates to prevent inconsistencies.
-     */
-    function updateUIForState() {
-        switch (currentState) {
-            case SearchState.IDLE:
-                $status.text('');
-                $input.prop('disabled', false);
-                $form.find('button[type="submit"]').prop('disabled', false);
-                break;
-
-            case SearchState.SEARCHING:
-                $status.text(KISSCOS.i18n.searching || 'Searching...');
-                $results.empty();
-                $searchTime.text('');
-                $input.prop('disabled', true);
-                $form.find('button[type="submit"]').prop('disabled', true);
-                break;
-
-            case SearchState.SUCCESS:
-                $status.text('');
-                $input.prop('disabled', false);
-                $form.find('button[type="submit"]').prop('disabled', false);
-                break;
-
-            case SearchState.ERROR:
-                $status.text('');
-                $input.prop('disabled', false);
-                $form.find('button[type="submit"]').prop('disabled', false);
-                break;
-
-            case SearchState.REDIRECTING:
-                $status.text('Redirecting to order...');
-                $input.prop('disabled', true);
-                $form.find('button[type="submit"]').prop('disabled', true);
-                break;
-        }
-    }
 
     function getQueryParam(name) {
         try {
@@ -150,43 +49,18 @@ jQuery(function ($) {
             '</tr></thead><tbody>';
 
         orders.forEach(function (order) {
-            var orderNumber = order.order_number || order.number || order.id;
             html += '<tr>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(orderNumber) + '</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(order.number || order.id) + '</a></td>' +
                 '<td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td>' +
-                '<td>' + (order.total_display || order.total || '') + '</td>' +
-                '<td>' + escapeHtml(order.date_display || order.date || '') + '</td>' +
+                '<td>' + order.total + '</td>' +
+                '<td>' + escapeHtml(order.date) + '</td>' +
                 '<td>' + escapeHtml(order.payment || '') + '</td>' +
                 '<td>' + escapeHtml(order.shipping || '') + '</td>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank">View</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank" rel="noopener noreferrer">View</a></td>' +
                 '</tr>';
         });
 
         html += '</tbody></table>';
-        return html;
-    }
-
-    /**
-     * Render a single order match result.
-     */
-    function renderOrderMatch(order) {
-        var html = '<div class="kiss-cos-order-match">';
-        html += '<div class="kiss-cos-order-match-header">';
-        html += '<h2>Order Found: #' + escapeHtml(order.order_number) + '</h2>';
-        html += '</div>';
-        html += '<div class="kiss-cos-order-match-details">';
-        html += '<table class="kiss-cos-order-details-table">';
-        html += '<tr><th>Order Number</th><td>' + escapeHtml(order.order_number) + '</td></tr>';
-        html += '<tr><th>Status</th><td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td></tr>';
-        html += '<tr><th>Total</th><td>' + escapeHtml(order.total_display) + '</td></tr>';
-        html += '<tr><th>Date</th><td>' + escapeHtml(order.date_display) + '</td></tr>';
-        html += '<tr><th>Customer</th><td>' + escapeHtml(order.customer.name) + ' &lt;' + escapeHtml(order.customer.email) + '&gt;</td></tr>';
-        html += '</table>';
-        html += '<div class="kiss-cos-order-match-actions">';
-        html += '<a href="' + escapeHtml(order.view_url) + '" class="button button-primary" target="_blank">View Order</a>';
-        html += '</div>';
-        html += '</div>';
-        html += '</div>';
         return html;
     }
 
@@ -195,18 +69,29 @@ jQuery(function ($) {
         var guestOrders = data.guest_orders || [];
         var orders = data.orders || [];
 
+        var html = '';
+
+        // DEBUG: Show debug information if available
+        if (data.debug) {
+            html += '<div class="kiss-cos-debug" style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin-bottom: 20px; font-family: monospace; font-size: 12px;">';
+            html += '<h3 style="margin-top: 0; color: #856404;">🔍 Order Search Debug Info</h3>';
+            html += '<pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">';
+            html += JSON.stringify(data.debug, null, 2);
+            html += '</pre>';
+            html += '</div>';
+        }
+
         if (!customers.length && !guestOrders.length && !orders.length) {
-            $results.html('<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
+            $results.html(html + '<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
             return;
         }
 
-        var html = '';
-
-        // Show order matches first (if any)
+        // Render matching orders first (direct order search results)
         if (orders.length) {
-            orders.forEach(function(order) {
-                html += renderOrderMatch(order);
-            });
+            html += '<div class="kiss-cos-matching-orders">';
+            html += '<h2>' + (KISSCOS.i18n.matching_orders || 'Matching Orders') + '</h2>';
+            html += renderOrdersTable(orders);
+            html += '</div>';
         }
 
         customers.forEach(function (cust) {
@@ -225,7 +110,7 @@ jQuery(function ($) {
 
             html += '<div class="kiss-cos-customer-actions">';
             if (cust.edit_url) {
-                html += '<a href="' + escapeHtml(cust.edit_url) + '" class="button button-secondary button-small" target="_blank">View user</a>';
+                html += '<a href="' + escapeHtml(cust.edit_url) + '" class="button button-secondary button-small" target="_blank" rel="noopener noreferrer">View user</a>';
             }
             html += '</div>';
 
@@ -258,28 +143,13 @@ jQuery(function ($) {
             return;
         }
 
-        // Prevent double submission
-        if (currentState === SearchState.SEARCHING || currentState === SearchState.REDIRECTING) {
-            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-                console.warn('⚠️ Search already in progress, ignoring duplicate submission');
-            }
-            return;
-        }
+        $status.text(KISSCOS.i18n.searching || 'Searching...');
+        $results.empty();
+        $searchTime.text('');
 
-        // Transition to SEARCHING state
-        if (!transitionTo(SearchState.SEARCHING, {
-            searchTerm: q,
-            startTime: performance.now()
-        })) {
-            return;
-        }
+        var startTime = performance.now();
 
-        // Abort any existing request
-        if (stateData.xhr) {
-            stateData.xhr.abort();
-        }
-
-        stateData.xhr = $.ajax({
+        $.ajax({
             url: KISSCOS.ajax_url,
             method: 'POST',
             dataType: 'json',
@@ -289,53 +159,32 @@ jQuery(function ($) {
                 q: q
             }
         }).done(function (resp) {
-            // Only process if still in SEARCHING state
-            if (currentState !== SearchState.SEARCHING) {
-                if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-                    console.warn('⚠️ Response received but state is no longer SEARCHING:', currentState);
-                }
-                return;
-            }
+            // Debug: Log the full response
+            console.log('AJAX Response:', resp);
 
             if (!resp || !resp.success) {
                 var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Something went wrong.';
-                transitionTo(SearchState.ERROR);
-                $results.html('<p><strong>' + msg + '</strong></p>');
+                var debugHtml = '<div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin-bottom: 20px;">';
+                debugHtml += '<h3 style="margin-top: 0; color: #856404;">⚠️ Request Not Successful</h3>';
+                debugHtml += '<p><strong>Message:</strong> ' + msg + '</p>';
+                debugHtml += '<p><strong>Full Response:</strong></p>';
+                debugHtml += '<pre style="background: #fff; padding: 10px; overflow: auto; max-height: 300px;">' +
+                             JSON.stringify(resp, null, 2) + '</pre>';
+                debugHtml += '</div>';
+                $results.html(debugHtml);
                 return;
             }
 
-            // Log debug data to console if present
-            if (resp.data.debug) {
-                console.group('KISS Search Debug');
-                console.log('Search time:', resp.data.search_time_ms + 'ms');
-                console.log('Traces:', resp.data.debug.traces);
-                console.log('Memory peak:', resp.data.debug.memory_peak_mb + 'MB');
-                console.groupEnd();
+            // Auto-redirect if backend determined this is a direct order match
+            if (resp.data.should_redirect_to_order && resp.data.orders && resp.data.orders.length === 1) {
+                window.location.href = resp.data.orders[0].view_url;
+                return; // Skip rendering, we're redirecting
             }
 
-            // Handle direct order redirect when searching for an order number.
-            if (resp.data.should_redirect_to_order && resp.data.redirect_url) {
-                if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-                    console.log('🔄 KISS: Redirecting to order...', {
-                        redirect_url: resp.data.redirect_url,
-                        should_redirect: resp.data.should_redirect_to_order,
-                        orders: resp.data.orders
-                    });
-                }
-
-                transitionTo(SearchState.REDIRECTING);
-
-                // Auto-redirect to the order page
-                window.location.href = resp.data.redirect_url;
-                return;
-            }
-
-            // Transition to SUCCESS state
-            transitionTo(SearchState.SUCCESS);
             renderResults(resp.data);
 
             // Display both total round-trip time and database search time with percentage
-            var totalSeconds = ((performance.now() - stateData.startTime) / 1000).toFixed(2);
+            var totalSeconds = ((performance.now() - startTime) / 1000).toFixed(2);
             var dbSeconds = (resp.data && typeof resp.data.search_time !== 'undefined') ? resp.data.search_time : null;
 
             if (dbSeconds !== null && totalSeconds > 0) {
@@ -344,22 +193,19 @@ jQuery(function ($) {
             } else {
                 $searchTime.text('Search completed in ' + totalSeconds + ' seconds');
             }
-        }).fail(function (xhr, status, error) {
-            // Only process if still in SEARCHING state
-            if (currentState !== SearchState.SEARCHING) {
-                return;
-            }
-
-            // Don't show error for aborted requests
-            if (status === 'abort') {
-                transitionTo(SearchState.IDLE);
-                return;
-            }
-
-            transitionTo(SearchState.ERROR);
-            $results.html('<p><strong>Request failed. Please try again.</strong></p>');
+        }).fail(function (jqXHR, textStatus, errorThrown) {
+            var errorHtml = '<div style="background: #f8d7da; border: 2px solid #f5c6cb; padding: 15px; margin-bottom: 20px;">';
+            errorHtml += '<h3 style="margin-top: 0; color: #721c24;">❌ AJAX Request Failed</h3>';
+            errorHtml += '<p><strong>Status:</strong> ' + textStatus + '</p>';
+            errorHtml += '<p><strong>Error:</strong> ' + errorThrown + '</p>';
+            errorHtml += '<p><strong>HTTP Status:</strong> ' + jqXHR.status + '</p>';
+            errorHtml += '<p><strong>Response Text:</strong></p>';
+            errorHtml += '<pre style="background: #fff; padding: 10px; overflow: auto; max-height: 300px;">' +
+                         (jqXHR.responseText || 'No response text') + '</pre>';
+            errorHtml += '</div>';
+            $results.html(errorHtml);
         }).always(function () {
-            stateData.xhr = null;
+            $status.text('');
         });
     });
 

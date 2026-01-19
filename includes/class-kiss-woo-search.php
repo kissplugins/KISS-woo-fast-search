@@ -15,11 +15,51 @@ class KISS_Woo_COS_Search {
     /**
      * Whether debug logging is enabled.
      *
-     * Default: disabled. Enable by defining `KISS_WOO_FAST_SEARCH_DEBUG` as true.
+     * Default: disabled. Enable by defining `KISS_WOO_COS_DEBUG` as true.
      *
      * @return bool
      */
+    protected function is_debug_enabled() {
+        if ( defined( 'KISS_WOO_COS_DEBUG' ) ) {
+            return (bool) KISS_WOO_COS_DEBUG;
+        }
 
+        return false;
+    }
+
+    /**
+     * Log debug information.
+     *
+     * @param string $message
+     * @param array  $context
+     *
+     * @return void
+     */
+    protected function debug_log( $message, $context = array() ) {
+        if ( ! $this->is_debug_enabled() ) {
+            return;
+        }
+
+        $line = '[KISS_WOO_COS] ' . (string) $message;
+        if ( ! empty( $context ) ) {
+            $encoded = wp_json_encode( $context );
+            if ( $encoded ) {
+                $line .= ' ' . $encoded;
+            }
+        }
+
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( $line );
+    }
+
+    /**
+     * Get debug information from the last lookup.
+     *
+     * @return array Debug information array.
+     */
+    public function get_last_lookup_debug() {
+        return $this->last_lookup_debug;
+    }
 
     /**
      * Find matching customers by email or name.
@@ -132,8 +172,7 @@ class KISS_Woo_COS_Search {
 
         $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
 
-        KISS_Woo_Debug_Tracer::log(
-            'Search',
+        $this->debug_log(
             'search_customers',
             array(
                 'term'          => $term,
@@ -182,11 +221,12 @@ class KISS_Woo_COS_Search {
         }
 
         // Ensure lookup table exists.
-        $table  = $wpdb->prefix . 'wc_customer_lookup';
+        $table = $wpdb->prefix . 'wc_customer_lookup';
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         if ( $exists !== $table ) {
             $this->last_lookup_debug['enabled'] = false;
-            KISS_Woo_Debug_Tracer::log( 'Search', 'wc_customer_lookup_missing', array( 'table' => $table, 'got' => $exists ), 'warn' );
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
             return array();
         }
 
@@ -225,13 +265,15 @@ class KISS_Woo_COS_Search {
                 $sql = $wpdb->remove_placeholder_escape( $sql );
             }
 
-            KISS_Woo_Debug_Tracer::log( 'Search', 'lookup_query', array( 'mode' => 'name_pair_prefix' ), 'debug' );
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
 
-            $t_start   = microtime( true );
-            $ids       = $wpdb->get_col( $sql );
+            $t_start = microtime( true );
+            $ids = $wpdb->get_col( $sql );
             $t_elapsed = round( ( microtime( true ) - $t_start ) * 1000, 2 );
 
-            KISS_Woo_Debug_Tracer::log( 'Search', 'lookup_result', array( 'mode' => 'name_pair_prefix', 'count' => is_array( $ids ) ? count( $ids ) : 0, 'elapsed_ms' => $t_elapsed ), 'debug' );
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
@@ -365,22 +407,82 @@ class KISS_Woo_COS_Search {
 
         $t_counts_start = microtime( true );
 
-        KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_start', array( 'user_ids' => $user_ids ), 'debug' );
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         try {
-            if ( class_exists( 'KISS_Woo_Utils' ) && KISS_Woo_Utils::is_hpos_enabled() ) {
+            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
                 $counts = $this->get_order_counts_hpos( $user_ids );
-                KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_done', array( 'mode' => 'hpos', 'elapsed_ms' => round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) ), 'debug' );
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
                 return $counts + $order_counts;
             }
         } catch ( Exception $e ) {
-            KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_exception', array( 'message' => $e->getMessage() ), 'warn' );
+            // Fall back to legacy logic on failure.
         }
 
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
-        KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_done', array( 'mode' => 'legacy', 'elapsed_ms' => round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) ), 'debug' );
+
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         return $legacy_counts + $order_counts;
+    }
+
+    /**
+     * Get total orders for a given customer ID.
+     * Optimized to use direct SQL COUNT query instead of loading all order IDs.
+     *
+     * @param int $user_id Customer user ID.
+     *
+     * @return int Number of orders for the customer.
+     */
+    protected function get_order_count_for_customer( $user_id ) {
+        global $wpdb;
+
+        // Validate user ID
+        if ( empty( $user_id ) || ! is_numeric( $user_id ) ) {
+            return 0;
+        }
+
+        $user_id = (int) $user_id;
+
+        try {
+            // Check if HPOS (High-Performance Order Storage) is enabled (WooCommerce 7.1+)
+            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+
+                // Use HPOS tables for better performance
+                $orders_table = $wpdb->prefix . 'wc_orders';
+
+                // Build status list
+                $statuses = array_keys( wc_get_order_statuses() );
+                if ( empty( $statuses ) ) {
+                    return 0;
+                }
+
+                $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
+
+                // Prepare and execute COUNT query
+                $query = $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$orders_table}
+                     WHERE customer_id = %d
+                     AND status IN ({$status_placeholders})",
+                    array_merge( array( $user_id ), $statuses )
+                );
+
+                $count = $wpdb->get_var( $query );
+                return $count !== null ? (int) $count : 0;
+            }
+        } catch ( Exception $e ) {
+            // Fall through to legacy method if HPOS check fails
+        }
+
+        // Fallback to legacy posts table for older WooCommerce or if HPOS not enabled
+        return $this->get_order_count_legacy( $user_id );
     }
 
     /**
@@ -521,7 +623,7 @@ class KISS_Woo_COS_Search {
      * Fetch order data for multiple order IDs via direct SQL.
      *
      * IMPORTANT: This bypasses wc_get_orders() to avoid expensive hooks/plugins.
-     * Returns data formatted via KISS_Woo_Order_Formatter::format_from_raw().
+     * Returns data in the same format as format_order_for_output().
      *
      * @param int[] $order_ids Order IDs to fetch.
      *
@@ -539,7 +641,16 @@ class KISS_Woo_COS_Search {
         $results = array();
 
         // Check if HPOS is enabled.
-        $use_hpos = ( class_exists( 'KISS_Woo_Utils' ) && KISS_Woo_Utils::is_hpos_enabled() );
+        $use_hpos = false;
+        try {
+            if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+                $use_hpos = true;
+            }
+        } catch ( Exception $e ) {
+            $use_hpos = false;
+        }
 
         if ( $use_hpos ) {
             $results = $this->get_order_data_hpos( $order_ids );
@@ -641,9 +752,9 @@ class KISS_Woo_COS_Search {
             }
         }
 
-        // Format for output using centralized formatter.
+        // Format for output.
         foreach ( $order_data as $oid => $data ) {
-            $results[ $oid ] = KISS_Woo_Order_Formatter::format_from_raw( array_merge( $data, array( 'order_number' => (string) $oid ) ) );
+            $results[ $oid ] = $this->format_order_data_for_output( $data );
         }
 
         return $results;
@@ -755,15 +866,131 @@ class KISS_Woo_COS_Search {
             }
         }
 
-        // Format for output using centralized formatter.
+        // Format for output.
         foreach ( $order_data as $oid => $data ) {
-            $results[ $oid ] = KISS_Woo_Order_Formatter::format_from_raw( array_merge( $data, array( 'order_number' => (string) $oid ) ) );
+            $results[ $oid ] = $this->format_order_data_for_output( $data );
         }
 
         return $results;
     }
 
+    /**
+     * Format raw order data array into output format.
+     *
+     * @param array $data Raw order data with keys: id, status, date_gmt, total, currency, payment, billing_email, shipping.
+     *
+     * @return array Formatted order data for JSON output.
+     */
+    protected function format_order_data_for_output( $data ) {
+        $order_id = (int) $data['id'];
+        $status   = (string) $data['status'];
 
+        // Build admin edit URL.
+        $edit_link = admin_url( 'post.php?post=' . $order_id . '&action=edit' );
+
+        // Format date.
+        $date_formatted = '';
+        if ( ! empty( $data['date_gmt'] ) && '0000-00-00 00:00:00' !== $data['date_gmt'] ) {
+            $timestamp = strtotime( $data['date_gmt'] );
+            if ( $timestamp ) {
+                $date_formatted = date_i18n(
+                    get_option( 'date_format' ) . ' ' . get_option( 'time_format' ),
+                    $timestamp + ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS )
+                );
+            }
+        }
+
+        // Format total with currency.
+        $total_formatted = '';
+        if ( '' !== $data['total'] && function_exists( 'wc_price' ) ) {
+            $total_formatted = wc_price( $data['total'], array( 'currency' => $data['currency'] ) );
+        } elseif ( '' !== $data['total'] ) {
+            $total_formatted = $data['currency'] . ' ' . number_format( (float) $data['total'], 2 );
+        }
+
+        // Get status label.
+        $status_label = $status;
+        if ( function_exists( 'wc_get_order_status_name' ) ) {
+            $status_label = wc_get_order_status_name( $status );
+        }
+
+        return array(
+            'id'            => $order_id,
+            'number'        => (string) $order_id, // Order number is typically the ID unless customized.
+            'status'        => esc_attr( $status ),
+            'status_label'  => esc_html( $status_label ),
+            'total'         => $total_formatted,
+            'date'          => esc_html( $date_formatted ),
+            'payment'       => esc_html( (string) $data['payment'] ),
+            'shipping'      => esc_html( (string) $data['shipping'] ),
+            'view_url'      => esc_url_raw( $edit_link ),
+            'billing_email' => esc_html( (string) $data['billing_email'] ),
+        );
+    }
+
+    /**
+     * Get recent orders for a given customer ID + email.
+     * Returns simplified data suitable for JSON.
+     *
+     * IMPORTANT: Avoid calling this in a loop for many customers.
+     * Doing so reintroduces an N+1 query pattern (one `wc_get_orders()` call per customer).
+     * Prefer `get_recent_orders_for_customers()` which batches the fetch.
+     *
+     * @deprecated Internal helper; use `get_recent_orders_for_customers()` for multi-customer searches.
+     *
+     * @param int    $user_id
+     * @param string $email
+     *
+     * @return array
+     */
+    protected function get_recent_orders_for_customer( $user_id, $email ) {
+        // Tripwire: if this gets called multiple times in a single request, it likely indicates
+        // an accidental N+1 reintroduction. Log a warning (debug default-on) to make it obvious.
+        static $call_count = 0;
+        $call_count++;
+        if ( $call_count === 2 ) {
+            $this->debug_log(
+                'warning_potential_n_plus_one',
+                array(
+                    'hint'  => 'get_recent_orders_for_customer() called multiple times; prefer get_recent_orders_for_customers().',
+                    'count' => $call_count,
+                )
+            );
+        }
+
+        if ( ! function_exists( 'wc_get_orders' ) ) {
+            return array();
+        }
+
+        $args = array(
+            'limit'   => 10,
+            'orderby' => 'date',
+            'order'   => 'DESC',
+            'status'  => array_keys( wc_get_order_statuses() ),
+        );
+
+        if ( $user_id ) {
+            $args['customer'] = $user_id;
+        }
+
+        $orders = wc_get_orders( $args );
+
+        if ( empty( $orders ) && empty( $user_id ) && is_email( $email ) ) {
+            $args['customer'] = $email;
+            $orders           = wc_get_orders( $args );
+        }
+
+        $results = array();
+
+        if ( ! empty( $orders ) ) {
+            foreach ( $orders as $order ) {
+                /** @var WC_Order $order */
+                $results[] = $this->format_order_for_output( $order );
+            }
+        }
+
+        return $results;
+    }
 
     /**
      * Fetch recent orders for multiple customers in one query.
@@ -792,7 +1019,8 @@ class KISS_Woo_COS_Search {
 
         $t_orders_start = microtime( true );
 
-        KISS_Woo_Debug_Tracer::log( 'Search', 'get_recent_orders_start', array( 'user_ids' => $user_ids ), 'debug' );
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
@@ -829,7 +1057,8 @@ class KISS_Woo_COS_Search {
         $rows = $wpdb->get_results( $sql );
         $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
-        KISS_Woo_Debug_Tracer::log( 'Search', 'get_recent_orders_sql_done', array( 'rows' => is_array( $rows ) ? count( $rows ) : 0, 'elapsed_ms' => $t_sql_elapsed ), 'debug' );
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         if ( empty( $rows ) ) {
             return $results;
@@ -862,7 +1091,8 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        KISS_Woo_Debug_Tracer::log( 'Search', 'order_hydration_start', array( 'order_ids' => count( $all_order_ids ) ), 'debug' );
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         // IMPORTANT: Avoid wc_get_orders() - it triggers expensive hooks/plugins on large sites.
         // Use direct SQL to fetch only the fields we need for display.
@@ -870,7 +1100,8 @@ class KISS_Woo_COS_Search {
         $order_data = $this->get_order_data_via_sql( $all_order_ids );
         $t_hydrate_elapsed = round( ( microtime( true ) - $t_hydrate_start ) * 1000, 2 );
 
-        KISS_Woo_Debug_Tracer::log( 'Search', 'order_hydration_done', array( 'orders' => is_array( $order_data ) ? count( $order_data ) : 0, 'elapsed_ms' => $t_hydrate_elapsed ), 'debug' );
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         if ( empty( $order_data ) ) {
             return $results;
@@ -890,6 +1121,419 @@ class KISS_Woo_COS_Search {
         }
 
         return $results;
+    }
+
+    /**
+     * Parse and normalize order search term to extract numeric ID.
+     * Supports: 12345, #12345, B12345, #B12345, D12345, #D12345
+     *
+     * NOTE: B/D prefixes are for DISPLAY formatting only.
+     * We extract the numeric ID and verify the formatted number matches.
+     *
+     * @param string $term Search term.
+     *
+     * @return array|null Array with 'prefix', 'id', 'expected_number' or null if not order-like.
+     */
+    protected function parse_order_term( $term ) {
+        $term = trim( strtoupper( $term ) );
+
+        // Strip # prefix
+        $term = ltrim( $term, '#' );
+
+        if ( '' === $term ) {
+            return null;
+        }
+
+        // Configurable prefixes via filter for forks
+        $allowed_prefixes = apply_filters( 'kiss_woo_order_search_prefixes', array( 'B', 'D' ) );
+
+        foreach ( $allowed_prefixes as $prefix ) {
+            if ( strpos( $term, $prefix ) === 0 ) {
+                $numeric = substr( $term, strlen( $prefix ) );
+                if ( ctype_digit( $numeric ) && $numeric !== '' ) {
+                    return array(
+                        'prefix'          => $prefix,
+                        'id'              => (int) $numeric,
+                        'expected_number' => $prefix . $numeric,
+                    );
+                }
+            }
+        }
+
+        // No prefix - just numeric
+        if ( ctype_digit( $term ) ) {
+            return array(
+                'prefix'          => '',
+                'id'              => (int) $term,
+                'expected_number' => $term,
+            );
+        }
+
+        return null; // Not an order-like term
+    }
+
+    /**
+     * Check if a search term looks like an order number.
+     *
+     * @param string $term Search term.
+     *
+     * @return bool
+     */
+    public function is_order_like_term( $term ) {
+        return null !== $this->parse_order_term( $term );
+    }
+
+    /**
+     * Search for order by number with two-tier lookup strategy.
+     *
+     * TIER 1 (FAST PATH - < 20ms):
+     * - Parse numeric ID from input (e.g., "B349445" → ID 349445)
+     * - Direct lookup via wc_get_order($id)
+     * - Verify get_order_number() matches input
+     * - Works when order number = prefix + order ID (default WooCommerce)
+     *
+     * TIER 2 (META FALLBACK - 50-150ms):
+     * - If fast path fails, search _order_number meta field
+     * - Handles sequential order plugins (SkyVerge, etc.) where order number ≠ order ID
+     * - Example: Order #B331580 with ID 123456 stored in _order_number meta
+     * - HPOS-compatible (searches wp_wc_orders_meta or wp_postmeta)
+     *
+     * What this DOES NOT DO:
+     * - Partial matches: "B349" won't find "B349445" (exact match only)
+     * - Fuzzy search: Must match exact order number
+     *
+     * @param string $term Search term (numeric or B/D prefix format).
+     *
+     * @return array Array with single order or empty (exact match only).
+     */
+    public function search_orders_by_number( $term ) {
+        $t0 = microtime( true );
+
+        // Initialize debug tracking
+        $this->last_lookup_debug = array(
+            'function'       => 'search_orders_by_number',
+            'term'           => $term,
+            'parsed'         => null,
+            'fast_path'      => null,
+            'meta_lookup'    => null,
+            'result'         => 'not_found',
+            'elapsed_ms'     => 0,
+            'trace'          => array(),
+        );
+
+        $this->last_lookup_debug['trace'][] = 'Starting search_orders_by_number';
+
+        // Parse term
+        $parsed = $this->parse_order_term( $term );
+        $this->last_lookup_debug['parsed'] = $parsed;
+        $this->last_lookup_debug['trace'][] = 'Parsed term: ' . ( $parsed ? json_encode( $parsed ) : 'null' );
+
+        if ( ! $parsed ) {
+            $this->last_lookup_debug['result'] = 'not_order_like';
+            $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+            $this->last_lookup_debug['trace'][] = 'Not an order-like term - returning empty';
+            $this->debug_log(
+                'search_orders_by_number_skip',
+                array(
+                    'term'   => $term,
+                    'reason' => 'Not an order-like term',
+                )
+            );
+            return array(); // Not an order number format
+        }
+
+        // STEP 1: Try direct ID lookup (FAST PATH - < 20ms)
+        $this->last_lookup_debug['trace'][] = 'Attempting fast path: wc_get_order(' . $parsed['id'] . ')';
+        $order = wc_get_order( $parsed['id'] );
+        $expected_normalized = strtoupper( trim( ltrim( $parsed['expected_number'], '#' ) ) );
+
+        $this->last_lookup_debug['fast_path'] = array(
+            'tried'               => true,
+            'order_id'            => $parsed['id'],
+            'order_exists'        => ( $order && is_a( $order, 'WC_Order' ) ),
+            'expected_normalized' => $expected_normalized,
+        );
+
+        $this->last_lookup_debug['trace'][] = 'Fast path order exists: ' . ( $order ? 'YES' : 'NO' );
+
+        if ( $order && is_a( $order, 'WC_Order' ) ) {
+            // Verify order number matches input to prevent wrong order redirect
+            $actual_number = $order->get_order_number();
+            $actual_normalized = strtoupper( trim( ltrim( $actual_number, '#' ) ) );
+
+            $this->last_lookup_debug['fast_path']['actual_number'] = $actual_number;
+            $this->last_lookup_debug['fast_path']['actual_normalized'] = $actual_normalized;
+            $this->last_lookup_debug['fast_path']['match'] = ( $actual_normalized === $expected_normalized );
+
+            $this->last_lookup_debug['trace'][] = 'Fast path comparison: expected="' . $expected_normalized . '" actual="' . $actual_normalized . '" match=' . ( $actual_normalized === $expected_normalized ? 'YES' : 'NO' );
+
+            if ( $actual_normalized === $expected_normalized ) {
+                // SUCCESS - Fast path matched!
+                $this->last_lookup_debug['trace'][] = 'FAST PATH SUCCESS - Returning order';
+                $result = array( $this->format_order_for_output( $order ) );
+
+                $this->last_lookup_debug['result'] = 'found_fast_path';
+                $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+
+                $this->debug_log(
+                    'search_orders_by_number_success_fast_path',
+                    array(
+                        'term'       => $term,
+                        'order_id'   => $parsed['id'],
+                        'method'     => 'direct_id_lookup',
+                        'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
+                    )
+                );
+
+                return $result;
+            }
+
+            // Order exists but number doesn't match - will try meta lookup
+            $this->last_lookup_debug['trace'][] = 'Fast path mismatch - trying meta lookup';
+            $this->debug_log(
+                'search_orders_by_number_mismatch_trying_meta',
+                array(
+                    'term'                => $term,
+                    'parsed_id'           => $parsed['id'],
+                    'expected_normalized' => $expected_normalized,
+                    'actual_normalized'   => $actual_normalized,
+                )
+            );
+        } else {
+            $this->last_lookup_debug['trace'][] = 'Fast path failed - order does not exist with ID ' . $parsed['id'];
+        }
+
+        // STEP 2: Fallback to meta-based search for sequential order number plugins
+        // This handles cases like SkyVerge Sequential Order Numbers where order number ≠ order ID
+        // Example: Order #B331580 might have ID 123456, stored in _order_number meta
+        $this->last_lookup_debug['trace'][] = 'Calling search_order_by_meta_number with: ' . $expected_normalized;
+        $order_by_meta = $this->search_order_by_meta_number( $expected_normalized, $t0 );
+        $this->last_lookup_debug['trace'][] = 'search_order_by_meta_number returned: ' . ( empty( $order_by_meta ) ? 'EMPTY' : 'ORDER FOUND' );
+        if ( ! empty( $order_by_meta ) ) {
+            $this->last_lookup_debug['result'] = 'found_meta_lookup';
+            $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+            $this->last_lookup_debug['trace'][] = 'RETURNING ORDER FROM META LOOKUP';
+            return $order_by_meta;
+        }
+
+        // No match found via either method
+        $this->last_lookup_debug['trace'][] = 'NO MATCH FOUND - Returning empty array';
+        $this->last_lookup_debug['result'] = 'not_found';
+        $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
+
+        $this->debug_log(
+            'search_orders_by_number_not_found',
+            array(
+                'term'       => $term,
+                'parsed_id'  => $parsed['id'],
+                'expected'   => $expected_normalized,
+                'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
+            )
+        );
+
+        return array();
+
+    }
+
+    /**
+     * Search for order by meta-stored order number (fallback for sequential order plugins).
+     *
+     * This handles plugins like SkyVerge Sequential Order Numbers that store the order number
+     * in the _order_number meta field, where order number ≠ order ID.
+     *
+     * Strategy:
+     * 1. Try SkyVerge plugin's helper function (if available)
+     * 2. Fall back to direct meta query (for other sequential order plugins)
+     *
+     * Performance: ~50-150ms (meta query, slower than direct ID lookup but necessary)
+     *
+     * @param string $order_number Normalized order number (e.g., "B331580").
+     * @param float  $t0           Start time for logging.
+     *
+     * @return array Array with single order or empty.
+     */
+    protected function search_order_by_meta_number( $order_number, $t0 ) {
+        global $wpdb;
+
+        // Initialize meta lookup debug tracking
+        $this->last_lookup_debug['meta_lookup'] = array(
+            'tried'        => true,
+            'order_number' => $order_number,
+            'trace'        => array(),
+        );
+
+        $this->last_lookup_debug['trace'][] = 'Entering search_order_by_meta_number with order_number: ' . $order_number;
+
+        $order_id = null;
+
+        // STRATEGY 1: Try SkyVerge Sequential Order Numbers plugin helper function
+        if ( function_exists( 'wc_sequential_order_numbers' ) ) {
+            $this->last_lookup_debug['meta_lookup']['skyverge_available'] = true;
+            $this->last_lookup_debug['trace'][] = 'SkyVerge plugin available - trying find_order_by_order_number';
+
+            // Try multiple formats to see which one SkyVerge expects
+            $formats_to_try = array(
+                'normalized'   => $order_number,           // e.g., "B331580"
+                'with_hash'    => '#' . $order_number,     // e.g., "#B331580"
+                'numeric_only' => ltrim( $order_number, 'BD' ), // e.g., "331580"
+            );
+
+            $this->last_lookup_debug['meta_lookup']['skyverge_formats_tried'] = array();
+
+            foreach ( $formats_to_try as $format_name => $format_value ) {
+                try {
+                    $this->last_lookup_debug['trace'][] = "Trying SkyVerge with format '{$format_name}': {$format_value}";
+                    $result = wc_sequential_order_numbers()->find_order_by_order_number( $format_value );
+
+                    $this->last_lookup_debug['meta_lookup']['skyverge_formats_tried'][ $format_name ] = array(
+                        'input'  => $format_value,
+                        'result' => $result ? $result : 'not_found',
+                    );
+
+                    if ( $result ) {
+                        $order_id = $result;
+                        $this->last_lookup_debug['meta_lookup']['skyverge_result'] = $order_id;
+                        $this->last_lookup_debug['meta_lookup']['skyverge_winning_format'] = $format_name;
+                        $this->last_lookup_debug['trace'][] = "SkyVerge SUCCESS with format '{$format_name}': found order_id={$order_id}";
+                        break; // Found it!
+                    }
+                } catch ( Exception $e ) {
+                    $this->last_lookup_debug['meta_lookup']['skyverge_formats_tried'][ $format_name ] = array(
+                        'input' => $format_value,
+                        'error' => $e->getMessage(),
+                    );
+                    $this->last_lookup_debug['trace'][] = "SkyVerge error with format '{$format_name}': " . $e->getMessage();
+                }
+            }
+
+            if ( ! $order_id ) {
+                $this->last_lookup_debug['meta_lookup']['skyverge_result'] = 'not_found_any_format';
+                $this->last_lookup_debug['trace'][] = 'SkyVerge: No format worked - all returned not_found';
+            }
+        } else {
+            $this->last_lookup_debug['meta_lookup']['skyverge_available'] = false;
+            $this->last_lookup_debug['trace'][] = 'SkyVerge plugin NOT available';
+        }
+
+        // STRATEGY 2: Fall back to direct meta query (for other sequential order plugins)
+        if ( ! $order_id ) {
+            $this->last_lookup_debug['trace'][] = 'No SkyVerge result - trying direct meta query';
+            // Check if HPOS is enabled
+            $use_hpos = false;
+            try {
+                if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
+                    method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
+                    \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+                    $use_hpos = true;
+                }
+            } catch ( Exception $e ) {
+                $use_hpos = false;
+            }
+
+            $this->last_lookup_debug['meta_lookup']['use_hpos'] = $use_hpos;
+            $this->last_lookup_debug['trace'][] = 'HPOS enabled: ' . ( $use_hpos ? 'YES' : 'NO' );
+
+            if ( $use_hpos ) {
+                // HPOS: Search in wp_wc_orders_meta
+                $this->last_lookup_debug['trace'][] = 'Querying HPOS meta table for _order_number = ' . $order_number;
+                $sql = $wpdb->prepare(
+                    "SELECT order_id
+                     FROM {$wpdb->prefix}wc_orders_meta
+                     WHERE meta_key = '_order_number'
+                       AND meta_value = %s
+                     LIMIT 1",
+                    $order_number
+                );
+                $this->last_lookup_debug['meta_lookup']['table'] = $wpdb->prefix . 'wc_orders_meta';
+            } else {
+                // Legacy: Search in wp_postmeta
+                $this->last_lookup_debug['trace'][] = 'Querying legacy postmeta table for _order_number = ' . $order_number;
+                $sql = $wpdb->prepare(
+                    "SELECT post_id AS order_id
+                     FROM {$wpdb->postmeta}
+                     WHERE meta_key = '_order_number'
+                       AND meta_value = %s
+                     LIMIT 1",
+                    $order_number
+                );
+                $this->last_lookup_debug['meta_lookup']['table'] = $wpdb->postmeta;
+            }
+
+            $this->last_lookup_debug['meta_lookup']['sql'] = $sql;
+
+            $order_id = $wpdb->get_var( $sql );
+
+            $this->last_lookup_debug['meta_lookup']['sql_result'] = $order_id ? $order_id : 'not_found';
+            $this->last_lookup_debug['trace'][] = 'SQL query result: ' . ( $order_id ? $order_id : 'not_found' );
+        }
+
+        $this->last_lookup_debug['meta_lookup']['found_order_id'] = $order_id;
+
+        if ( ! $order_id ) {
+            $this->last_lookup_debug['trace'][] = 'META LOOKUP FAILED - No order_id found';
+            $this->last_lookup_debug['meta_lookup']['result'] = 'not_found';
+            $this->debug_log(
+                'search_order_by_meta_not_found',
+                array(
+                    'order_number' => $order_number,
+                    'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+                )
+            );
+            return array();
+        }
+
+        // Load the order
+        $this->last_lookup_debug['trace'][] = 'Loading order with ID: ' . $order_id;
+        $order = wc_get_order( $order_id );
+        $this->last_lookup_debug['meta_lookup']['order_loaded'] = ( $order && is_a( $order, 'WC_Order' ) );
+        $this->last_lookup_debug['trace'][] = 'Order loaded: ' . ( $order ? 'YES' : 'NO' );
+
+        if ( ! $order || ! is_a( $order, 'WC_Order' ) ) {
+            $this->last_lookup_debug['trace'][] = 'ORDER LOAD FAILED';
+            $this->last_lookup_debug['meta_lookup']['result'] = 'order_load_failed';
+            return array();
+        }
+
+        // Double-check the order number matches (paranoid validation)
+        $actual_number = $order->get_order_number();
+        $actual_normalized = strtoupper( trim( ltrim( $actual_number, '#' ) ) );
+
+        $this->last_lookup_debug['meta_lookup']['actual_number'] = $actual_number;
+        $this->last_lookup_debug['meta_lookup']['actual_normalized'] = $actual_normalized;
+        $this->last_lookup_debug['meta_lookup']['match'] = ( $actual_normalized === $order_number );
+
+        $this->last_lookup_debug['trace'][] = 'Validating order number: expected="' . $order_number . '" actual="' . $actual_normalized . '" match=' . ( $actual_normalized === $order_number ? 'YES' : 'NO' );
+
+        if ( $actual_normalized !== $order_number ) {
+            $this->last_lookup_debug['trace'][] = 'ORDER NUMBER MISMATCH - Returning empty';
+            $this->last_lookup_debug['meta_lookup']['result'] = 'number_mismatch';
+            $this->debug_log(
+                'search_order_by_meta_mismatch',
+                array(
+                    'expected'   => $order_number,
+                    'actual'     => $actual_normalized,
+                    'order_id'   => $order_id,
+                )
+            );
+            return array();
+        }
+
+        // SUCCESS - Meta lookup matched!
+        $this->last_lookup_debug['trace'][] = 'META LOOKUP SUCCESS - Returning order';
+        $this->last_lookup_debug['meta_lookup']['result'] = 'success';
+        $result = array( $this->format_order_for_output( $order ) );
+
+        $this->debug_log(
+            'search_orders_by_number_success_meta_lookup',
+            array(
+                'order_number' => $order_number,
+                'order_id'     => $order_id,
+                'method'       => 'meta_lookup',
+                'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+            )
+        );
+
+        return $result;
     }
 
     /**
@@ -925,12 +1569,49 @@ class KISS_Woo_COS_Search {
             foreach ( $orders as $order ) {
                 /** @var WC_Order $order */
                 if ( 0 === (int) $order->get_customer_id() ) {
-                    $results[] = KISS_Woo_Order_Formatter::format( $order );
+                    $results[] = $this->format_order_for_output( $order );
                 }
             }
         }
 
         return $results;
+    }
+
+    /**
+     * Prepare order data for JSON output.
+     *
+     * @param WC_Order $order
+     *
+     * @return array
+     */
+    protected function format_order_for_output( $order ) {
+        $order_id     = $order->get_id();
+        $status       = $order->get_status();
+        $total        = $order->get_total();
+        $currency     = $order->get_currency();
+        $date_created = $order->get_date_created();
+        $payment      = $order->get_payment_method_title();
+        $shipping     = $order->get_shipping_method();
+
+        // `esc_url()` is for HTML output contexts and will entity-encode `&` as `&#038;`.
+        // This payload is returned as JSON and inserted via JS; it must be a raw URL.
+        $edit_link = get_edit_post_link( $order_id, 'raw' );
+        if ( empty( $edit_link ) ) {
+            $edit_link = admin_url( 'post.php?post=' . (int) $order_id . '&action=edit' );
+        }
+
+        return array(
+            'id'            => (int) $order_id,
+            'number'        => esc_html( $order->get_order_number() ),
+            'status'        => esc_attr( $status ),
+            'status_label'  => esc_html( wc_get_order_status_name( $status ) ),
+            'total'         => wc_price( $total, array( 'currency' => $currency ) ),
+            'date'          => esc_html( $date_created ? $date_created->date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) : '' ),
+            'payment'       => esc_html( $payment ),
+            'shipping'      => esc_html( $shipping ),
+            'view_url'      => esc_url_raw( $edit_link ),
+            'billing_email' => esc_html( $order->get_billing_email() ),
+        );
     }
 
     /**
