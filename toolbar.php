@@ -47,9 +47,34 @@ class KISS_Woo_COS_Floating_Search_Bar {
         }
         return KISS_Woo_COS_Settings::is_toolbar_hidden();
     }
+
+    /**
+     * Detect block editor screens where the floating toolbar should not render.
+     *
+     * @return bool
+     */
+    private function is_block_editor_screen(): bool {
+        if ( ! function_exists( 'get_current_screen' ) ) {
+            return false;
+        }
+
+        $screen = get_current_screen();
+        if ( ! $screen ) {
+            return false;
+        }
+
+        if ( method_exists( $screen, 'is_block_editor' ) ) {
+            return (bool) $screen->is_block_editor();
+        }
+
+        return false;
+    }
     
     public function enqueue_assets(): void {
         if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+        if ( $this->is_block_editor_screen() ) {
             return;
         }
 
@@ -86,6 +111,9 @@ class KISS_Woo_COS_Floating_Search_Bar {
 
     public function render_toolbar(): void {
         if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+        if ( $this->is_block_editor_screen() ) {
             return;
         }
 
