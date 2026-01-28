@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.5] - 2026-01-28
+
+### Added
+- **Lazy Backfill with Fallback Query**: Coupon search now works immediately without manual backfill
+  - Added `fallback_search()` method that queries `wp_posts` directly when lookup table has no results
+  - Added `lazy_backfill_coupons()` method that automatically indexes coupons found via fallback (up to 10 per search)
+  - Added `format_from_coupon()` method to format WC_Coupon objects directly
+  - **Impact**: Sites with 100k+ coupons can now use coupon search immediately without waiting for full backfill
+  - Lookup table is populated gradually as users search, avoiding performance impact
+  - Fallback results are marked with `source_flags: ['fallback']` for debugging
+- **Persistent Search Scope Toggle**: Users/Orders vs Coupons toggle now remembers last used setting
+  - Uses localStorage to persist scope selection across page loads
+  - Applies to both admin search page and floating toolbar
+  - URL parameter `?scope=coupons` still takes precedence for deep links
+  - Gracefully falls back to 'users' if localStorage unavailable (private browsing)
+
+### Fixed
+- **Coupon Results Not Returned**: Fixed critical bug where coupon search results were not being sent to frontend
+  - Root cause: AJAX handler was missing `coupons` key in response array
+  - Solution: Added `coupons` and `search_scope` keys to response in `handle_search()` method
+  - Impact: Coupon search now returns results to the UI correctly
+  - Added `coupon_count` to debug logging for better troubleshooting
+- **Auto-Redirect for Single Coupon**: When exactly 1 coupon is found, automatically redirect to coupon editor
+  - Follows same pattern as order search (DRY principle)
+  - Backend sets `should_redirect_to_order=true` and `redirect_url` when 1 coupon found
+  - Frontend uses unified redirect logic for both orders and coupons
+  - Updated toolbar and admin page JavaScript to handle coupon redirects
+  - Added debug logging for coupon redirects
+
+### Changed
+- Updated version number to 1.2.5 in main plugin file
+
+---
+
+## [1.2.4] - 2026-01-28
+
+### Fixed
+- **Coupon Lookup Backfill Issue**: Fixed critical bug preventing coupon lookup table from being populated
+  - Root cause: `wc_get_coupon()` helper function not available in WP-CLI and early admin contexts
+  - Solution: Changed `KISS_Woo_Coupon_Lookup::upsert_coupon()` to use `new WC_Coupon()` directly instead of `wc_get_coupon()` helper
+  - Impact: Coupon search now works correctly after backfilling 17,499 existing coupons
+  - Added debug logging to `upsert_coupon()` for WP-CLI troubleshooting
+  - Successfully backfilled all existing coupons via WP-CLI: `wp kiss-woo coupons backfill --batch=1000`
+
+### Changed
+- Updated version number to 1.2.4 in main plugin file
+
+---
+
 ## [1.2.3] - 2026-01-09
 
 ### Security
