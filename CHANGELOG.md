@@ -7,7 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.2.3] - 2026-01-09
+
+### Security
+- **PII Redaction in Error Logs**: Added automatic redaction of sensitive data before logging to `error_log()` (Critical security fix)
+  - Implemented `redact_sensitive_data()` method in `KISS_Woo_Debug_Tracer` to prevent PII leaks in server logs
+  - Redacts 14 sensitive keys: email, billing_email, shipping_email, search_term, customer_id, user_id, billing_phone, shipping_phone, addresses, IP address, user agent
+  - Keeps first 3 characters for debugging context (e.g., "joh***" instead of full email)
+  - Recursively redacts nested arrays to catch all sensitive data
+  - Only affects error-level logs written to server logs; debug traces remain unredacted for authorized debugging
+  - **Impact**: Prevents accidental PII exposure in production server logs while maintaining debugging capability
+- **Production Console Logging**: Removed unconditional `console.log()` calls from admin JavaScript (Critical security fix)
+  - Wrapped 5 unconditional console calls in debug flag checks (`if (KISSCOS.debug)`)
+  - Affected calls: version check, invalid state transitions, duplicate submissions, response state warnings, redirect logging
+  - Console output now only appears when `KISS_WOO_FAST_SEARCH_DEBUG` constant is enabled
+  - **Impact**: Prevents operational details and search terms from leaking to browser console in production
+
 ### Changed
+- Updated version number to 1.2.3 in main plugin file and admin JS
+
+---
+
+## [1.2.2] - 2026-01-09
+
+### Added
+- **State Machine**: Implemented explicit finite state machines (FSM) for AJAX search to prevent impossible UI states (Audit item 4.1)
+  - Created state machine for admin search page with 5 states: IDLE, SEARCHING, SUCCESS, ERROR, REDIRECTING
+  - Created state machine for toolbar search with 4 states: IDLE, SEARCHING, REDIRECTING_ORDER, REDIRECTING_SEARCH
+  - Added state transition validation to prevent invalid state changes
+  - Added request abortion when starting new searches to prevent race conditions
+  - Added double-submission prevention to ignore duplicate requests
+  - Added debug logging for state transitions (when debug mode enabled)
+  - Created comprehensive documentation in `docs/STATE-MACHINE.md` with state diagrams
+  - Benefits: Prevents "Searching..." text from getting stuck, prevents double submissions, clearer error recovery
+- **Timeout Fallback**: Added 5-second safety timeout for toolbar redirect states (Audit item 4.2)
+  - Automatically resets UI to IDLE if navigation is blocked (e.g., popup blocker)
+  - Prevents users from being stuck with disabled input/button
+  - Cleans up timeout on successful page navigation
+  - Logs timeout events in debug mode for troubleshooting
+
+### Fixed
+- **Test Infrastructure**: Fixed all 38 unit tests to pass successfully (100% passing rate)
+  - Fixed `WP_User_Query` mocking conflict by removing class definition from bootstrap
+  - Added comprehensive `$wpdb` mock to `AjaxHandlerTest` with all required methods
+  - Added missing WordPress function stubs (`get_edit_post_link`, `wc_get_order_status_name`, `wp_strip_all_tags`, `wp_list_pluck`, `human_time_diff`)
+  - Fixed AJAX response handling by simulating `wp_send_json_*` functions' `die()` behavior with exceptions
+  - Added proper `wc_seq_order_number_pro` plugin mock to `OrderResolverTest`
+  - Created `patchwork.json` to enable stubbing of internal PHP functions
+  - All test suites now pass: AjaxHandler (6/6), OrderResolver (25/25), Search (7/7)
+
+### Changed
+- **Code Quality - Single Source of Truth**: Completed high-priority refactoring from systematic audit
+  - **Order Formatting**: Removed deprecated `format_order_for_output()` and `format_order_data_for_output()` methods from Search class. All order formatting now goes through `KISS_Woo_Order_Formatter` as the single source of truth (Audit item 3.1)
+  - **Debug Logging**: Removed `debug_log()` and `is_debug_enabled()` wrapper methods from Search class. All debug logging now goes directly through `KISS_Woo_Debug_Tracer::log()` for single observability path (Audit item 3.3)
+  - **HPOS Detection**: Already using `KISS_Woo_Utils::is_hpos_enabled()` utility across all files (Audit item 2.2 - previously completed)
+- **Code Quality - Separation of Concerns**: Completed medium-priority refactoring from systematic audit
+  - **Inline CSS/JS Extraction**: Extracted ~400 lines of inline CSS/JS to separate files for better caching and maintainability (Audit item 1.2)
+    - Created `admin/css/kiss-woo-admin.css` (77 lines from admin-page.php)
+    - Created `admin/css/kiss-woo-debug.css` (103 lines from debug-panel.php)
+    - Created `admin/js/kiss-woo-debug.js` (90 lines from debug-panel.php)
+    - Created `admin/css/kiss-woo-toolbar.css` (118 lines from toolbar.php)
+    - Created `admin/js/kiss-woo-toolbar.js` (107 lines from toolbar.php)
+    - Updated all three files to properly enqueue assets via `wp_enqueue_style()` and `wp_enqueue_script()`
+    - Removed inline `<style>` and `<script>` tags from PHP files
+  - **AJAX Handler Extraction**: Extracted 110+ lines of AJAX business logic to dedicated class for better separation of concerns (Audit item 1.1)
+    - Created `includes/class-kiss-woo-ajax-handler.php` with `KISS_Woo_Ajax_Handler` class
+    - Moved `handle_ajax_search()` method from main plugin file to new `handle_search()` method in dedicated class
+    - Extracted search orchestration logic to private `perform_search()` method for better testability
+    - Updated all 6 AJAX handler tests to use new class
+    - Main plugin file reduced from 264 to 150 lines (43% reduction)
 - **UX Improvement**: Updated search input placeholders to include "order ID" to clarify that order number search is supported
   - Toolbar: "Search order ID, email, or name…"
   - Admin page: "Type order ID, email, or name and hit Enter…"
@@ -15,6 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test Infrastructure**: Refactored test bootstrap to load real plugin classes instead of fake implementations
 - **Test Coverage**: Rewrote `SearchTest` to test the actual `search_customers()` method instead of a stubbed version
 - **Test Suite**: Added comprehensive AJAX handler tests (`AjaxHandlerTest`) for end-to-end order number lookup → redirect URL flow
+- **Order Output (Single Source of Truth)**: Standardized frontend rendering and tests to use `order_number` as the canonical field.
+  - **Legacy (temporary)**: `number` is still provided as an alias for one version to avoid breaking older consumers.
+- **Debug Logging**: Consolidated search-class logging through `KISS_Woo_Debug_Tracer` (via a single wrapper) and reduced direct `error_log()` usage.
+- **HPOS Detection**: Replaced duplicated `OrderUtil::custom_orders_table_usage_is_enabled()` checks with `KISS_Woo_Utils::is_hpos_enabled()` where applicable.
+- **Test Suite (Blocker Fix)**: Updated `tests/bootstrap.php` to load the main plugin file (`kiss-woo-fast-order-search.php`) and stub minimal WP/WC bootstrap functions/classes so unit tests can instantiate `KISS_Woo_Customer_Order_Search_Plugin` without WordPress.
 
 ### Added
 - **Documentation**: Created `tests/TESTING-IMPROVEMENTS-SUMMARY.md` with detailed explanation of testing improvements
@@ -26,6 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - JSON response structure validation
   - Input validation (minimum 2 characters)
   - Sequential order number resolution
+- **Utilities**: Added `KISS_Woo_Utils::is_hpos_enabled()` to centralize HPOS detection.
+- **Order Formatting**: Added `KISS_Woo_Order_Formatter::format_from_raw()` so SQL-fetched orders share the same output shape as `format()`.
 
 ### Technical Details
 - `tests/bootstrap.php` now loads all real plugin classes from `includes/` directory in proper dependency order
@@ -33,6 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Testable_Search` class simplified to only stub database queries, not business logic
 - Tests now validate actual production code paths, catching real integration bugs
 - All tests use Mockery for `WP_User_Query` mocking to test against real WordPress behavior
+- `admin/kiss-woo-admin.js` now prefers `order_number` / `total_display` / `date_display` with safe fallbacks for older payloads.
+- `tests/Unit/AjaxHandlerTest.php` now asserts `order_number` and optionally validates legacy `number` when present.
 
 ---
 
