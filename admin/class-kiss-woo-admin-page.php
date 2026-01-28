@@ -103,9 +103,12 @@ class KISS_Woo_COS_Admin_Page {
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
                 'nonce'    => wp_create_nonce( 'kiss_woo_cos_search' ),
                 'i18n'     => array(
-                    'searching'  => __( 'Searching...', 'kiss-woo-customer-order-search' ),
-                    'no_results' => __( 'No matching customers found.', 'kiss-woo-customer-order-search' ),
-                    'guest_title'=> __( 'Guest Orders (no account)', 'kiss-woo-customer-order-search' ),
+                    'searching'      => __( 'Searching...', 'kiss-woo-customer-order-search' ),
+                    'no_results'     => __( 'No matching customers found.', 'kiss-woo-customer-order-search' ),
+                    'no_coupons'     => __( 'No matching coupons found.', 'kiss-woo-customer-order-search' ),
+                    'guest_title'    => __( 'Guest Orders (no account)', 'kiss-woo-customer-order-search' ),
+                    'matching_orders'=> __( 'Matching Orders', 'kiss-woo-customer-order-search' ),
+                    'coupon_title'   => __( 'Matching Coupons', 'kiss-woo-customer-order-search' ),
                 ),
             )
         );
@@ -122,15 +125,29 @@ class KISS_Woo_COS_Admin_Page {
         <div class="wrap kiss-cos-wrap">
             <h1><?php esc_html_e( 'KISS - Faster Customer & Order Search', 'kiss-woo-customer-order-search' ); ?></h1>
 
-            <p class="description">
+            <p class="description kiss-cos-description"
+               data-desc-users="<?php esc_attr_e( 'Enter an order ID, customer email, partial email, or name to quickly find their account and orders.', 'kiss-woo-customer-order-search' ); ?>"
+               data-desc-coupons="<?php esc_attr_e( 'Enter a coupon code or title to quickly find matching coupons.', 'kiss-woo-customer-order-search' ); ?>">
                 <?php esc_html_e( 'Enter an order ID, customer email, partial email, or name to quickly find their account and orders.', 'kiss-woo-customer-order-search' ); ?>
             </p>
 
             <form id="kiss-cos-search-form" class="kiss-cos-search-form" action="#" method="get" autocomplete="off">
+                <div class="kiss-cos-scope-toggle" role="group" aria-label="<?php esc_attr_e( 'Search scope', 'kiss-woo-customer-order-search' ); ?>">
+                    <label>
+                        <input type="radio" name="kiss-cos-scope" value="users" checked />
+                        <?php esc_html_e( 'Users/Orders', 'kiss-woo-customer-order-search' ); ?>
+                    </label>
+                    <label>
+                        <input type="radio" name="kiss-cos-scope" value="coupons" />
+                        <?php esc_html_e( 'Coupons', 'kiss-woo-customer-order-search' ); ?>
+                    </label>
+                </div>
                 <input type="text"
                        id="kiss-cos-search-input"
                        class="regular-text"
-                       placeholder="<?php esc_attr_e( 'Type order ID, email, or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
+                       placeholder="<?php esc_attr_e( 'Type order ID, email, or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>"
+                       data-placeholder-users="<?php esc_attr_e( 'Type order ID, email, or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>"
+                       data-placeholder-coupons="<?php esc_attr_e( 'Type coupon code or title and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
                 <button type="submit" class="button button-primary">
                     <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
                 </button>

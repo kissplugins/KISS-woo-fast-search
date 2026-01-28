@@ -51,7 +51,12 @@ class KISS_Woo_Ajax_Handler {
         }
 
         // Sanitize and validate input.
-        $term = isset( $_POST['q'] ) ? sanitize_text_field( wp_unslash( $_POST['q'] ) ) : '';
+        $term  = isset( $_POST['q'] ) ? sanitize_text_field( wp_unslash( $_POST['q'] ) ) : '';
+        $scope = isset( $_POST['scope'] ) ? sanitize_text_field( wp_unslash( $_POST['scope'] ) ) : 'users';
+
+        if ( ! in_array( $scope, array( 'users', 'coupons' ), true ) ) {
+            $scope = 'users';
+        }
 
         if ( strlen( $term ) < 2 ) {
             wp_send_json_error( array( 'message' => __( 'Please enter at least 2 characters.', 'kiss-woo-customer-order-search' ) ) );
@@ -65,7 +70,7 @@ class KISS_Woo_Ajax_Handler {
         $t_start = microtime( true );
 
         // Perform search.
-        $result = $this->perform_search( $term );
+        $result = $this->perform_search( $term, $scope );
 
         // Calculate timing.
         $elapsed_seconds = round( microtime( true ) - $t_start, 2 );
@@ -76,6 +81,7 @@ class KISS_Woo_Ajax_Handler {
             'customer_count' => count( $result['customers'] ),
             'guest_count'    => count( $result['guest_orders'] ),
             'order_count'    => count( $result['orders'] ),
+            'coupon_count'   => isset( $result['coupons'] ) ? count( $result['coupons'] ) : 0,
         ) );
 
         // Build response.
@@ -83,10 +89,12 @@ class KISS_Woo_Ajax_Handler {
             'customers'                => $result['customers'],
             'guest_orders'             => $result['guest_orders'],
             'orders'                   => $result['orders'],
+            'coupons'                  => isset( $result['coupons'] ) ? $result['coupons'] : array(),
             'should_redirect_to_order' => $result['should_redirect_to_order'],
             'redirect_url'             => $result['redirect_url'],
             'search_time'              => $elapsed_seconds,
             'search_time_ms'           => $elapsed_ms,
+            'search_scope'             => isset( $result['search_scope'] ) ? $result['search_scope'] : 'users',
         );
 
         // Add debug data if enabled.
@@ -108,11 +116,44 @@ class KISS_Woo_Ajax_Handler {
      * @param string $term Search term.
      * @return array Search results with customers, guest_orders, orders, and redirect info.
      */
-    private function perform_search( string $term ): array {
+    private function perform_search( string $term, string $scope = 'users' ): array {
         // Initialize search components.
         $search         = new KISS_Woo_COS_Search();
         $cache          = new KISS_Woo_Search_Cache();
         $order_resolver = new KISS_Woo_Order_Resolver( $cache );
+
+        if ( 'coupons' === $scope ) {
+            $coupon_search = new KISS_Woo_Coupon_Search();
+
+            $done    = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'coupon_search' );
+            $coupons = $coupon_search->search_coupons( $term );
+            $done( array( 'count' => count( $coupons ) ) );
+
+            // Auto-redirect if exactly 1 coupon found (same pattern as order search)
+            $should_redirect = false;
+            $redirect_url    = null;
+
+            if ( 1 === count( $coupons ) ) {
+                $should_redirect = true;
+                $redirect_url    = $coupons[0]['view_url'];
+
+                KISS_Woo_Debug_Tracer::log( 'AjaxHandler', 'coupon_redirect', array(
+                    'coupon_id' => $coupons[0]['id'],
+                    'code'      => $coupons[0]['code'],
+                    'url'       => $redirect_url,
+                ) );
+            }
+
+            return array(
+                'customers'                => array(),
+                'guest_orders'             => array(),
+                'orders'                   => array(),
+                'coupons'                  => $coupons,
+                'should_redirect_to_order' => $should_redirect,
+                'redirect_url'             => $redirect_url,
+                'search_scope'             => 'coupons',
+            );
+        }
 
         // Customer search.
         $done      = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'customer_search' );
@@ -160,9 +201,10 @@ class KISS_Woo_Ajax_Handler {
             'customers'                => $customers,
             'guest_orders'             => $guest_orders,
             'orders'                   => $orders,
+            'coupons'                  => array(),
             'should_redirect_to_order' => $should_redirect_to_order,
             'redirect_url'             => $redirect_url,
+            'search_scope'             => $scope,
         );
     }
 }
-

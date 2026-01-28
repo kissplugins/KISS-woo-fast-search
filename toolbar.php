@@ -123,20 +123,31 @@ class KISS_Woo_COS_Floating_Search_Bar {
                 <span class="floating-search-toolbar__speed-label">
                     <?php esc_html_e( 'Ultra Fast Search (3-4x faster)', 'kiss-woo-customer-order-search' ); ?>
                 </span>
-                <input
-                    type="text"
-                    id="floating-search-input"
-                    class="floating-search-input"
-                    placeholder="<?php esc_attr_e( 'Search order ID, email, or name…', 'kiss-woo-customer-order-search' ); ?>"
-                    autocomplete="off"
-                />
-                <button
-                    type="button"
-                    id="floating-search-submit"
-                    class="floating-search-submit"
-                >
-                    <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
-                </button>
+                <div class="floating-search-toolbar__controls">
+                    <div class="floating-search-toggle" role="group" aria-label="<?php esc_attr_e( 'Search scope', 'kiss-woo-customer-order-search' ); ?>">
+                        <input type="radio" id="kiss-search-scope-users" name="kiss-search-scope" value="users" checked />
+                        <label for="kiss-search-scope-users"><?php esc_html_e( 'Users/Orders', 'kiss-woo-customer-order-search' ); ?></label>
+                        <input type="radio" id="kiss-search-scope-coupons" name="kiss-search-scope" value="coupons" />
+                        <label for="kiss-search-scope-coupons"><?php esc_html_e( 'Coupons', 'kiss-woo-customer-order-search' ); ?></label>
+                        <span class="floating-search-toggle__thumb" aria-hidden="true"></span>
+                    </div>
+                    <input
+                        type="text"
+                        id="floating-search-input"
+                        class="floating-search-input"
+                        placeholder="<?php esc_attr_e( 'Search order ID, email, or name…', 'kiss-woo-customer-order-search' ); ?>"
+                        data-placeholder-users="<?php esc_attr_e( 'Search order ID, email, or name…', 'kiss-woo-customer-order-search' ); ?>"
+                        data-placeholder-coupons="<?php esc_attr_e( 'Search coupon code or title…', 'kiss-woo-customer-order-search' ); ?>"
+                        autocomplete="off"
+                    />
+                    <button
+                        type="button"
+                        id="floating-search-submit"
+                        class="floating-search-submit"
+                    >
+                        <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
+                    </button>
+                </div>
             </div>
         </div>
         <?php

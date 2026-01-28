@@ -48,14 +48,85 @@
 
 .floating-search-toolbar__section--search {
     margin-left: auto;
+    gap: 10px;
 }
 
 .floating-search-toolbar__speed-label {
     color:rgb(240, 240, 241);
     font-size: 13px;
     font-weight: 600;
-    margin-right: 10px;
+    margin-right: 0;
     white-space: nowrap;
+}
+
+.floating-search-toolbar__controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* iOS-style segmented toggle */
+.floating-search-toggle {
+    --toggle-pad: 2px;
+    position: relative;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    height: 24px;
+    min-width: 190px;
+    padding: var(--toggle-pad);
+    border-radius: 999px;
+    background: #2c3338;
+    border: 1px solid #3c434a;
+    box-sizing: border-box;
+}
+
+.floating-search-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.floating-search-toggle label {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #c3c4c7;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+#kiss-search-scope-users:checked + label,
+#kiss-search-scope-coupons:checked + label {
+    color: #fff;
+}
+
+.floating-search-toggle input:focus-visible + label {
+    box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.6);
+    border-radius: 999px;
+}
+
+.floating-search-toggle__thumb {
+    position: absolute;
+    top: var(--toggle-pad);
+    bottom: var(--toggle-pad);
+    left: var(--toggle-pad);
+    width: calc(50% - var(--toggle-pad));
+    background: #2271b1;
+    border-radius: 999px;
+    transition: transform 0.2s ease;
+    z-index: 1;
+}
+
+#kiss-search-scope-coupons:checked ~ .floating-search-toggle__thumb {
+    transform: translateX(100%);
 }
 
 /* Search input styled like WP admin bar */
@@ -112,11 +183,15 @@
 
     .floating-search-input {
         height: 34px;
-        width: 150px;
+        width: 140px;
     }
 
     .floating-search-toolbar__speed-label {
         display: none;
     }
-}
 
+    .floating-search-toggle {
+        height: 30px;
+        min-width: 150px;
+    }
+}
