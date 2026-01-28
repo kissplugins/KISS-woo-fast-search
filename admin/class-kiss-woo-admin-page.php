@@ -81,15 +81,12 @@ class KISS_Woo_COS_Admin_Page {
             return;
         }
 
-        // wp_enqueue_style(
-        //     'kiss-woo-cos-admin',
-        //     KISS_WOO_COS_URL . 'admin/kiss-admin.css',
-        //     array(),
-        //     KISS_WOO_COS_VERSION
-        // );
-
-        // If you don't create a CSS file, this will just 404 harmlessly.
-        // You can also remove the above and inline styles in render_page().
+        wp_enqueue_style(
+            'kiss-woo-cos-admin',
+            KISS_WOO_COS_URL . 'admin/css/kiss-woo-admin.css',
+            array(),
+            KISS_WOO_COS_VERSION
+        );
 
         wp_enqueue_script(
             'kiss-woo-cos-admin',
@@ -126,14 +123,14 @@ class KISS_Woo_COS_Admin_Page {
             <h1><?php esc_html_e( 'KISS - Faster Customer & Order Search', 'kiss-woo-customer-order-search' ); ?></h1>
 
             <p class="description">
-                <?php esc_html_e( 'Enter a customer email, partial email, or name to quickly find their account and orders.', 'kiss-woo-customer-order-search' ); ?>
+                <?php esc_html_e( 'Enter an order ID, customer email, partial email, or name to quickly find their account and orders.', 'kiss-woo-customer-order-search' ); ?>
             </p>
 
             <form id="kiss-cos-search-form" class="kiss-cos-search-form" action="#" method="get" autocomplete="off">
                 <input type="text"
                        id="kiss-cos-search-input"
                        class="regular-text"
-                       placeholder="<?php esc_attr_e( 'Type email or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
+                       placeholder="<?php esc_attr_e( 'Type order ID, email, or name and hit Enter…', 'kiss-woo-customer-order-search' ); ?>" />
                 <button type="submit" class="button button-primary">
                     <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
                 </button>
@@ -144,85 +141,6 @@ class KISS_Woo_COS_Admin_Page {
             <div id="kiss-cos-results" class="kiss-cos-results">
                 <!-- Results injected by JS -->
             </div>
-
-            <style>
-                .kiss-cos-wrap .kiss-cos-search-form {
-                    margin-top: 15px;
-                    margin-bottom: 20px;
-                }
-                .kiss-cos-search-form .regular-text {
-                    min-width: 320px;
-                }
-                .kiss-cos-search-status {
-                    margin-left: 10px;
-                    font-style: italic;
-                }
-                .kiss-cos-search-time {
-                    margin-top: 8px;
-                    font-size: 12px;
-                    color: #666;
-                }
-                .kiss-cos-results .kiss-cos-customer {
-                    background: #fff;
-                    border: 1px solid #ccd0d4;
-                    padding: 12px 14px;
-                    margin-bottom: 12px;
-                    border-radius: 4px;
-                }
-                .kiss-cos-results .kiss-cos-customer-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 8px;
-                }
-                .kiss-cos-results .kiss-cos-customer-name {
-                    font-weight: 600;
-                    font-size: 14px;
-                }
-                .kiss-cos-results .kiss-cos-customer-meta {
-                    font-size: 12px;
-                    color: #666;
-                }
-                .kiss-cos-results table.kiss-cos-orders-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-top: 8px;
-                    font-size: 12px;
-                }
-                .kiss-cos-results table.kiss-cos-orders-table th,
-                .kiss-cos-results table.kiss-cos-orders-table td {
-                    border-bottom: 1px solid #eee;
-                    padding: 4px 6px;
-                    text-align: left;
-                }
-                .kiss-cos-results .kiss-cos-guest-orders {
-                    margin-top: 25px;
-                    background: #fff;
-                    border: 1px solid #ccd0d4;
-                    padding: 12px 14px;
-                    margin-bottom: 12px;
-                    border-radius: 4px;
-                }
-                .kiss-cos-results .kiss-cos-guest-orders h2 {
-                    margin-bottom: 8px;
-                }
-                .kiss-status-pill {
-                    display: inline-block;
-                    padding: 2px 6px;
-                    border-radius: 999px;
-                    font-size: 11px;
-                    line-height: 1.4;
-                    background: #f1f1f1;
-                }
-                .kiss-cos-orders-table a {
-                    font-weight: 600;
-                    text-decoration: none;
-                }
-                .kiss-cos-orders-table a:hover {
-                    text-decoration: underline;
-                }
-
-            </style>
         </div>
         <?php
     }

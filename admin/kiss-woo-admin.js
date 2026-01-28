@@ -50,13 +50,13 @@ jQuery(function ($) {
 
         orders.forEach(function (order) {
             html += '<tr>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank">' + escapeHtml(order.number || order.id) + '</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(order.number || order.id) + '</a></td>' +
                 '<td><span class="kiss-status-pill">' + escapeHtml(order.status_label) + '</span></td>' +
                 '<td>' + order.total + '</td>' +
                 '<td>' + escapeHtml(order.date) + '</td>' +
                 '<td>' + escapeHtml(order.payment || '') + '</td>' +
                 '<td>' + escapeHtml(order.shipping || '') + '</td>' +
-                '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank">View</a></td>' +
+                '<td><a href="' + escapeHtml(order.view_url) + '" class="button button-small" target="_blank" rel="noopener noreferrer">View</a></td>' +
                 '</tr>';
         });
 
@@ -67,13 +67,32 @@ jQuery(function ($) {
     function renderResults(data) {
         var customers = data.customers || [];
         var guestOrders = data.guest_orders || [];
+        var orders = data.orders || [];
 
-        if (!customers.length && !guestOrders.length) {
-            $results.html('<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
+        var html = '';
+
+        // DEBUG: Show debug information if available
+        if (data.debug) {
+            html += '<div class="kiss-cos-debug" style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin-bottom: 20px; font-family: monospace; font-size: 12px;">';
+            html += '<h3 style="margin-top: 0; color: #856404;">🔍 Order Search Debug Info</h3>';
+            html += '<pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">';
+            html += JSON.stringify(data.debug, null, 2);
+            html += '</pre>';
+            html += '</div>';
+        }
+
+        if (!customers.length && !guestOrders.length && !orders.length) {
+            $results.html(html + '<p><strong>' + (KISSCOS.i18n.no_results || 'No matching customers found.') + '</strong></p>');
             return;
         }
 
-        var html = '';
+        // Render matching orders first (direct order search results)
+        if (orders.length) {
+            html += '<div class="kiss-cos-matching-orders">';
+            html += '<h2>' + (KISSCOS.i18n.matching_orders || 'Matching Orders') + '</h2>';
+            html += renderOrdersTable(orders);
+            html += '</div>';
+        }
 
         customers.forEach(function (cust) {
             html += '<div class="kiss-cos-customer">';
@@ -91,7 +110,7 @@ jQuery(function ($) {
 
             html += '<div class="kiss-cos-customer-actions">';
             if (cust.edit_url) {
-                html += '<a href="' + escapeHtml(cust.edit_url) + '" class="button button-secondary button-small" target="_blank">View user</a>';
+                html += '<a href="' + escapeHtml(cust.edit_url) + '" class="button button-secondary button-small" target="_blank" rel="noopener noreferrer">View user</a>';
             }
             html += '</div>';
 
@@ -140,10 +159,26 @@ jQuery(function ($) {
                 q: q
             }
         }).done(function (resp) {
+            // Debug: Log the full response
+            console.log('AJAX Response:', resp);
+
             if (!resp || !resp.success) {
                 var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Something went wrong.';
-                $results.html('<p><strong>' + msg + '</strong></p>');
+                var debugHtml = '<div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin-bottom: 20px;">';
+                debugHtml += '<h3 style="margin-top: 0; color: #856404;">⚠️ Request Not Successful</h3>';
+                debugHtml += '<p><strong>Message:</strong> ' + msg + '</p>';
+                debugHtml += '<p><strong>Full Response:</strong></p>';
+                debugHtml += '<pre style="background: #fff; padding: 10px; overflow: auto; max-height: 300px;">' +
+                             JSON.stringify(resp, null, 2) + '</pre>';
+                debugHtml += '</div>';
+                $results.html(debugHtml);
                 return;
+            }
+
+            // Auto-redirect if backend determined this is a direct order match
+            if (resp.data.should_redirect_to_order && resp.data.orders && resp.data.orders.length === 1) {
+                window.location.href = resp.data.orders[0].view_url;
+                return; // Skip rendering, we're redirecting
             }
 
             renderResults(resp.data);
@@ -158,8 +193,17 @@ jQuery(function ($) {
             } else {
                 $searchTime.text('Search completed in ' + totalSeconds + ' seconds');
             }
-        }).fail(function () {
-            $results.html('<p><strong>Request failed. Please try again.</strong></p>');
+        }).fail(function (jqXHR, textStatus, errorThrown) {
+            var errorHtml = '<div style="background: #f8d7da; border: 2px solid #f5c6cb; padding: 15px; margin-bottom: 20px;">';
+            errorHtml += '<h3 style="margin-top: 0; color: #721c24;">❌ AJAX Request Failed</h3>';
+            errorHtml += '<p><strong>Status:</strong> ' + textStatus + '</p>';
+            errorHtml += '<p><strong>Error:</strong> ' + errorThrown + '</p>';
+            errorHtml += '<p><strong>HTTP Status:</strong> ' + jqXHR.status + '</p>';
+            errorHtml += '<p><strong>Response Text:</strong></p>';
+            errorHtml += '<pre style="background: #fff; padding: 10px; overflow: auto; max-height: 300px;">' +
+                         (jqXHR.responseText || 'No response text') + '</pre>';
+            errorHtml += '</div>';
+            $results.html(errorHtml);
         }).always(function () {
             $status.text('');
         });

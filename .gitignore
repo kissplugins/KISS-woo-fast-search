@@ -1,2 +1,10 @@
 temp.php
 .DS_Store
+
+# Composer
+/vendor/
+composer.phar
+
+# PHPUnit
+.phpunit.result.cache
+.phpunit.cache/
