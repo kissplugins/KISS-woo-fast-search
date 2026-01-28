@@ -28,11 +28,15 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
          * [--max=<number>]
          * : Max coupons to process before stopping (default: 0 = no limit).
          *
+         * [--reset]
+         * : Reset progress and start from beginning.
+         *
          * ## EXAMPLES
          *
          *     wp kiss-woo coupons backfill --batch=500
          *     wp kiss-woo coupons backfill --start=12000 --batch=1000
          *     wp kiss-woo coupons backfill --max=5000
+         *     wp kiss-woo coupons backfill --reset
          *
          * @param array $args       CLI args.
          * @param array $assoc_args CLI assoc args.
@@ -42,21 +46,44 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
             $batch = isset( $assoc_args['batch'] ) ? (int) $assoc_args['batch'] : 500;
             $start = isset( $assoc_args['start'] ) ? (int) $assoc_args['start'] : 0;
             $max   = isset( $assoc_args['max'] ) ? (int) $assoc_args['max'] : 0;
+            $reset = isset( $assoc_args['reset'] );
 
+            // Use shared builder class.
+            $builder = new KISS_Woo_Coupon_Lookup_Builder();
+
+            // Reset if requested.
+            if ( $reset ) {
+                $builder->reset_progress();
+                \WP_CLI::log( 'Progress reset.' );
+            }
+
+            // Ensure table exists.
             $lookup = KISS_Woo_Coupon_Lookup::instance();
             $lookup->maybe_install();
 
-            $backfill = new KISS_Woo_Coupon_Backfill();
+            // If start ID specified, update progress manually.
+            if ( $start > 0 ) {
+                $progress = $builder->get_progress();
+                $progress['last_id'] = $start;
+                $builder->reset_progress();
+                update_option( 'kiss_woo_coupon_build_progress', $progress, false );
+                \WP_CLI::log( sprintf( 'Starting from coupon ID: %d', $start ) );
+            }
 
             $processed_total = 0;
-            $last_id = $start;
 
             while ( true ) {
-                $result = $backfill->run_batch( $last_id, $batch );
-                $processed_total += (int) $result['processed'];
-                $last_id = (int) $result['last_id'];
+                // Run batch with force=true to bypass rate limiting.
+                $result = $builder->run_batch( $batch, true );
 
-                \WP_CLI::log( sprintf( 'Processed: %d (last_id=%d)', $processed_total, $last_id ) );
+                if ( ! $result['success'] ) {
+                    \WP_CLI::error( $result['message'] );
+                    break;
+                }
+
+                $processed_total += (int) $result['processed'];
+
+                \WP_CLI::log( $result['message'] );
 
                 if ( $max > 0 && $processed_total >= $max ) {
                     \WP_CLI::warning( 'Max limit reached; stopping early.' );
@@ -68,7 +95,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
                 }
             }
 
-            \WP_CLI::success( sprintf( 'Backfill complete. Total processed: %d (last_id=%d)', $processed_total, $last_id ) );
+            \WP_CLI::success( sprintf( 'Backfill complete. Total processed: %d', $processed_total ) );
         }
     }
 

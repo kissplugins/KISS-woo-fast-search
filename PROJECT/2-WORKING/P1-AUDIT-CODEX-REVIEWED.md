@@ -56,67 +56,94 @@ if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 
 ## Finding #2: Non-sargable LIKE scans on coupon lookup
 
-**Location:** `class-kiss-woo-coupon-search.php` (line 70-88)
+**Location:** `class-kiss-woo-coupon-search.php` (line 65-99)
 
-**Severity:** ⚠️ **LOW-MEDIUM** (Performance)
+**Severity:** 🔴 **HIGH** (Performance - CRITICAL)
 
 **Issue:**
 ```php
+// Lines 65-68: Variable definitions
+$term_like = '%' . $wpdb->esc_like( $term ) . '%';   // INFIX
+$term_prefix = $wpdb->esc_like( $term ) . '%';       // PREFIX (UNUSED!)
+$code_prefix = $wpdb->esc_like( $normalized_code ) . '%';  // PREFIX
+$desc_like = '%' . $wpdb->esc_like( $normalized_text ) . '%';  // INFIX
+
+// Lines 84-88, 97-99: WHERE clause
 WHERE blog_id = %d
   AND status NOT IN ('trash', 'auto-draft')
   AND (
-      code_normalized LIKE %s       -- ✅ Prefix search (index-friendly)
-      OR title LIKE %s              -- ✅ Prefix search (index-friendly)
-      OR description_normalized LIKE %s  -- ❌ Infix search (full scan)
+      code_normalized LIKE %s       -- Uses $code_prefix (term%) ✅
+      OR title LIKE %s              -- Uses $term_like (%term%) ❌ WRONG!
+      OR description_normalized LIKE %s  -- Uses $desc_like (%term%) ❌
   )
 ```
 
+**CRITICAL ERROR IN MY PREVIOUS ANALYSIS:**
+- ❌ **I WAS WRONG** - Title search uses `$term_like` (infix), NOT `$term_prefix`
+- ❌ **2 out of 3 conditions use infix search** (`%term%`)
+- ❌ **MySQL abandons ALL indexes when OR contains infix searches**
+- 🔴 **This will scan ALL 360k rows on EVERY search**
+
 **Analysis:**
-- ⚠️ **PARTIALLY AGREE** - Description search uses `%term%` (infix), which can't use indexes
-- ✅ **BUT** - Code and title use prefix search (index-friendly)
-- ✅ **BUT** - This is an **intentional UX tradeoff**:
-  - Users expect to find "SUMMER" in "BIGSUMMER2024"
-  - Admin search with 100k coupons is acceptable for this use case
-  - Lookup table is already optimized vs. wp_posts meta queries
+- ✅ **STRONGLY AGREE** - This is a **critical performance bug**, not a UX tradeoff
+- Even though `code_normalized` could use an index, the `OR title LIKE '%term%'` defeats it
+- With OR conditions, MySQL uses the least restrictive path (full table scan)
+- At 360k coupons, this will cause:
+  - Multi-second query times
+  - Database locks
+  - Potential timeouts
+  - Poor user experience
 
-**Proposed Fix (Optional):**
-If performance becomes an issue, add full-text index:
+**Proposed Fix (REQUIRED):**
 
-```sql
--- Option 1: Add FULLTEXT index (MySQL 5.6+)
-ALTER TABLE wp_kiss_woo_coupon_lookup
-ADD FULLTEXT INDEX idx_description_fulltext (description_normalized);
-
--- Then use MATCH AGAINST instead of LIKE
-WHERE MATCH(description_normalized) AGAINST(%s IN BOOLEAN MODE)
-```
-
-**OR** limit description search to prefix-only:
-
+**Option 1: Use prefix search only (RECOMMENDED - simplest fix)**
 ```php
-// Change from:
-OR description_normalized LIKE %s  -- %term%
-
-// To:
-OR description_normalized LIKE %s  -- term%
+// Line 98: Change from $term_like to $term_prefix
+WHERE blog_id = %d
+  AND status NOT IN ('trash', 'auto-draft')
+  AND (
+      code_normalized LIKE %s       -- $code_prefix (term%) ✅
+      OR title LIKE %s              -- $term_prefix (term%) ✅ FIXED!
+      OR description_normalized LIKE %s  -- $desc_prefix (term%) ✅ FIXED!
+  )
 ```
 
-**Impact:** Medium - Changes user experience (can't find "SUMMER" in middle of text)
+**Option 2: Separate queries with UNION (better UX, more complex)**
+```php
+// Query 1: Fast prefix search (uses indexes)
+SELECT ... WHERE code_normalized LIKE 'term%' OR title LIKE 'term%'
+UNION
+// Query 2: Slower infix search on description only (limited scope)
+SELECT ... WHERE description_normalized LIKE '%term%' LIMIT 5
+```
 
-**Priority:** Low - Monitor performance first, optimize only if needed
+**Option 3: Add FULLTEXT index (best performance, requires MySQL 5.6+)**
+```sql
+ALTER TABLE wp_kiss_woo_coupon_lookup
+ADD FULLTEXT INDEX idx_search_fulltext (code_normalized, title, description_normalized);
+```
+```php
+WHERE MATCH(code_normalized, title, description_normalized) AGAINST(%s IN BOOLEAN MODE)
+```
 
-**Recommendation:** ❌ **DO NOT FIX** - Current behavior is acceptable for admin search
+**Impact:**
+- **Option 1:** High UX impact - can't find "SUMMER" in "BIGSUMMER2024"
+- **Option 2:** Low UX impact - still finds infix matches in description
+- **Option 3:** No UX impact - maintains current behavior with better performance
 
-**Effort:** 🟡 **MEDIUM** (4-8 hours)
-- Add FULLTEXT index to lookup table
-- Rewrite query to use MATCH AGAINST
-- Test with 100k+ coupons to verify performance improvement
-- OR: Change to prefix-only search (2 hours, but degrades UX)
+**Priority:** 🔴 **CRITICAL** - Must fix before deploying to sites with 100k+ coupons
 
-**Risk of Breaking Change:** 🟡 **MEDIUM**
-- FULLTEXT index: Low risk, but requires MySQL 5.6+ (most sites have this)
-- Prefix-only search: **High UX impact** - users can't find "SUMMER" in middle of text
-- Could break existing user workflows/expectations
+**Recommendation:** ✅ **MUST FIX** - Use Option 1 (prefix only) or Option 3 (FULLTEXT)
+
+**Effort:**
+- **Option 1 (Prefix only):** � **LOW** (1-2 hours) - Change 2 variables, test
+- **Option 2 (UNION):** 🟡 **MEDIUM** (4-6 hours) - Rewrite query, test performance
+- **Option 3 (FULLTEXT):** 🟡 **MEDIUM** (3-5 hours) - Add index, rewrite query, test
+
+**Risk of Breaking Change:**
+- **Option 1:** 🟡 **MEDIUM** - High UX impact (can't find infix matches)
+- **Option 2:** 🟢 **LOW** - Maintains UX, just changes query structure
+- **Option 3:** 🟢 **LOW** - No UX impact, requires MySQL 5.6+ (99% of sites have this)
 
 ---
 
@@ -226,22 +253,25 @@ foreach ( $coupon_ids as $coupon_id ) {
 | Finding | Severity | Agree? | Fix Priority | Effort | Risk | Action |
 |---------|----------|--------|--------------|--------|------|--------|
 | #1 - Unconditional error_log | Medium | ⚠️ Partial | Medium | 🟢 Low (1-2h) | 🟢 Very Low | Wrap in WP_DEBUG check |
-| #2 - LIKE scans on description | Low | ⚠️ Partial | Low | 🟡 Medium (4-8h) | 🟡 Medium (UX impact) | Monitor, don't fix yet |
+| #2 - Infix LIKE scans (2/3 conditions) | 🔴 **HIGH** | ✅ **YES** | 🔴 **CRITICAL** | 🟢 Low (1-2h) Option 1<br>🟡 Med (3-5h) Option 3 | 🟡 Medium (UX)<br>🟢 Low (FULLTEXT) | **MUST FIX** - Use prefix or FULLTEXT |
 | #3 - Fallback N+1 queries | High | ✅ Yes | High | 🟡 Medium (4-6h) | 🟡 Medium (critical path) | Batch load meta OR accept as temporary |
 
 ---
 
 ## Recommended Action Plan
 
-### Phase 1: Critical Fixes (Before Production)
-1. ✅ **Fix #1**: Wrap all error_log() in WP_DEBUG checks
-2. ⚠️ **Fix #3**: Either:
+### Phase 1: Critical Fixes (BEFORE PRODUCTION - BLOCKING)
+1. 🔴 **FIX #2 IMMEDIATELY** - This will break sites with 100k+ coupons:
+   - **Recommended:** Option 3 (FULLTEXT index) - Best performance, no UX impact
+   - **Alternative:** Option 1 (Prefix only) - Quick fix, but degrades UX
+   - **DO NOT DEPLOY** without fixing this
+2. ✅ **Fix #1**: Wrap all error_log() in WP_DEBUG checks (easy win)
+3. ⚠️ **Fix #3**: Either:
    - Option A: Batch load coupon meta (recommended)
    - Option B: Accept current implementation as temporary (lazy backfill mitigates)
 
 ### Phase 2: Monitor & Optimize (Post-Launch)
-3. 📊 **Monitor #2**: Track query performance on description searches
-4. 📊 **Monitor #3**: Track fallback usage (should decrease over time)
+4. 📊 **Monitor #3**: Track fallback usage (should decrease over time as lookup table fills)
 
 ---
 
@@ -249,9 +279,24 @@ foreach ( $coupon_ids as $coupon_id ) {
 
 - **User IDs are NOT PII in isolation** - Only useful to trusted parties with DB access
 - **Finding #1** is rated Medium because it's poor practice, not a security risk
-- **Finding #2** is an intentional UX tradeoff, not a bug
+- **Finding #2** is a **CRITICAL BUG**, not a UX tradeoff - I was wrong in my initial analysis
 - **Finding #3** is mitigated by lazy backfill strategy
 - All findings are in `feature/add-coupon-search` branch, not yet in `main`
+
+---
+
+## ⚠️ CRITICAL UPDATE - Finding #2
+
+**I made a critical error in my initial analysis.** External review correctly identified that:
+
+1. ❌ **Title search uses `$term_like` (infix), NOT `$term_prefix`**
+2. ❌ **2 out of 3 OR conditions use infix search (`%term%`)**
+3. ❌ **MySQL abandons ALL indexes when OR contains infix searches**
+4. 🔴 **This will scan 360k rows on EVERY search**
+
+**This is NOT a UX tradeoff - it's a performance bug that will break large sites.**
+
+**Thank you to the external reviewer for catching this!**
 
 ---
 

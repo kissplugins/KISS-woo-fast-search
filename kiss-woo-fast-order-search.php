@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.2.5
+ * Version: 1.2.6
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.2.5' );
+    define( 'KISS_WOO_COS_VERSION', '1.2.6' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -75,6 +75,7 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-lookup.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-backfill.php';
+        require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-lookup-builder.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-cli.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-ajax-handler.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
@@ -105,9 +106,27 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         $ajax_handler = new KISS_Woo_Ajax_Handler();
         $ajax_handler->register();
 
+        // Register WP-Cron action for background coupon build.
+        add_action( 'kiss_woo_coupon_build_batch', array( $this, 'run_background_build_batch' ) );
+
         // Register diagnostic endpoint (only when debug is enabled).
         if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
             add_action( 'admin_init', array( $this, 'maybe_run_diagnostic' ) );
+        }
+    }
+
+    /**
+     * Run a single batch of the background build process (called by WP-Cron).
+     *
+     * @return void
+     */
+    public function run_background_build_batch() {
+        $builder = new KISS_Woo_Coupon_Lookup_Builder();
+        $result  = $builder->run_batch( 500, false );
+
+        // If not done, schedule next batch.
+        if ( $result['success'] && ! $result['done'] ) {
+            wp_schedule_single_event( time() + 60, 'kiss_woo_coupon_build_batch' );
         }
     }
 

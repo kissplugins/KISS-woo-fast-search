@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.6] - 2026-01-28
+
+### Added
+- **Admin UI Button for Coupon Lookup Table Build**: Added "Build Lookup Table" button in settings page
+  - New settings section "Coupon Lookup Table" with real-time progress tracking
+  - Shows total coupons, indexed count, percentage complete, and build status
+  - Background job runs via WP-Cron with rate limiting (60 seconds between batches)
+  - Progress persists across page loads and server restarts
+  - Cancel button to stop ongoing builds
+  - Auto-polling UI updates every 3 seconds while building
+  - **Impact**: Admins can now build coupon lookup table from UI without WP-CLI access
+- **Shared Batch Processor Architecture**: Created `KISS_Woo_Coupon_Lookup_Builder` class
+  - Single source of truth for batch processing logic
+  - Used by both WP-CLI and admin UI background jobs
+  - Implements locking to prevent concurrent builds
+  - Rate limiting with configurable intervals
+  - Progress tracking with status (idle, running, complete, error)
+  - Graceful error handling and recovery from stuck locks
+  - **Pattern**: Admin button and CLI both trigger same code path via different front-ends
+
+### Changed
+- **Updated WP-CLI Command**: Refactored `wp kiss-woo coupons backfill` to use shared builder class
+  - Added `--reset` flag to reset progress and start from beginning
+  - CLI bypasses rate limiting with `force=true` parameter
+  - Improved progress messages using builder's unified format
+  - Maintains backward compatibility with existing flags (`--batch`, `--start`, `--max`)
+- **Background Job Handler**: Registered WP-Cron action `kiss_woo_coupon_build_batch`
+  - Automatically schedules next batch if not complete
+  - 60-second interval between batches (configurable via `MIN_RUN_INTERVAL` constant)
+  - Self-healing: stuck locks timeout after 5 minutes
+
+### Technical Details
+- New files:
+  - `includes/class-kiss-woo-coupon-lookup-builder.php` (313 lines) - Shared batch processor
+  - `admin/js/kiss-woo-settings.js` (172 lines) - Settings page JavaScript
+- Modified files:
+  - `admin/class-kiss-woo-settings.php` - Added coupon section, AJAX handlers, asset enqueuing
+  - `includes/class-kiss-woo-coupon-cli.php` - Refactored to use shared builder
+  - `kiss-woo-fast-order-search.php` - Added builder include, WP-Cron action registration
+- AJAX endpoints:
+  - `kiss_woo_start_coupon_build` - Start background build
+  - `kiss_woo_get_build_progress` - Poll for progress updates
+  - `kiss_woo_cancel_coupon_build` - Cancel ongoing build
+- WordPress options used:
+  - `kiss_woo_coupon_build_progress` - Stores progress data
+  - `kiss_woo_coupon_build_lock` - Prevents concurrent builds
+  - `kiss_woo_coupon_build_next_run` - Rate limiting timestamp
+
+---
+
 ## [1.2.5] - 2026-01-28
 
 ### Added
