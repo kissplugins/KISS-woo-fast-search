@@ -6,10 +6,38 @@
 .kiss-cos-wrap .kiss-cos-search-form {
     margin-top: 15px;
     margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
 }
 
 .kiss-cos-search-form .regular-text {
     min-width: 320px;
+}
+
+.kiss-cos-scope-toggle {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #c3c4c7;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.kiss-cos-scope-toggle label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #3c434a;
+    cursor: pointer;
+}
+
+.kiss-cos-scope-toggle input {
+    margin: 0;
 }
 
 .kiss-cos-search-status {
@@ -62,6 +90,28 @@
     text-align: left;
 }
 
+.kiss-cos-results table.kiss-cos-coupons-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+.kiss-cos-results table.kiss-cos-coupons-table th,
+.kiss-cos-results table.kiss-cos-coupons-table td {
+    border-bottom: 1px solid #eee;
+    padding: 4px 6px;
+    text-align: left;
+}
+
+.kiss-cos-results .kiss-cos-coupons {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: 4px;
+}
+
 .kiss-cos-results .kiss-cos-guest-orders {
     margin-top: 25px;
     background: #fff;
@@ -92,4 +142,3 @@
 .kiss-cos-orders-table a:hover {
     text-decoration: underline;
 }
-

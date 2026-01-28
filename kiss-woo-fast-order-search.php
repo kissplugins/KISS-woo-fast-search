@@ -2,7 +2,7 @@
 /**
  * Plugin Name: KISS - Faster Customer & Order Search
  * Description: Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.
- * Version: 1.2.3
+ * Version: 1.2.5
  * Author: Vishal Kharche
  * Text Domain: kiss-woo-customer-order-search
  * Requires at least: 6.0
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'KISS_WOO_COS_VERSION' ) ) {
-    define( 'KISS_WOO_COS_VERSION', '1.2.3' );
+    define( 'KISS_WOO_COS_VERSION', '1.2.5' );
 }
 if ( ! defined( 'KISS_WOO_COS_PATH' ) ) {
     define( 'KISS_WOO_COS_PATH', plugin_dir_path( __FILE__ ) );
@@ -68,9 +68,14 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-debug-tracer.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-utils.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search-cache.php';
+        require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-formatter.php';
+        require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-search.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-formatter.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-order-resolver.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-search.php';
+        require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-lookup.php';
+        require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-backfill.php';
+        require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-coupon-cli.php';
         require_once KISS_WOO_COS_PATH . 'includes/class-kiss-woo-ajax-handler.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-admin-page.php';
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-settings.php';
@@ -82,6 +87,7 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         // Floating toolbar integration (admin only).
         if ( is_admin() ) {
             require_once KISS_WOO_COS_PATH . 'toolbar.php';
+            require_once KISS_WOO_COS_PATH . 'admin/coupon-diagnostic.php';
         }
 
         // Init admin page and settings.
@@ -91,6 +97,9 @@ class KISS_Woo_Customer_Order_Search_Plugin {
         // Init debug panel (only shows if KISS_WOO_FAST_SEARCH_DEBUG is true).
         $debug_panel = new KISS_Woo_Debug_Panel();
         $debug_panel->register();
+
+        // Init coupon lookup/indexer.
+        KISS_Woo_Coupon_Lookup::instance();
 
         // Register AJAX handler.
         $ajax_handler = new KISS_Woo_Ajax_Handler();
