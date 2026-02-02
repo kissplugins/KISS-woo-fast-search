@@ -65,10 +65,11 @@ class KISS_Woo_COS_Search {
      * Find matching customers by email or name.
      *
      * @param string $term Search term.
+     * @param array  $filters Optional array of KISS_Woo_Order_Filter instances.
      *
      * @return array
      */
-    public function search_customers( $term ) {
+    public function search_customers( $term, $filters = array() ) {
         $t0 = microtime( true );
         $term = trim( $term );
 
@@ -170,6 +171,11 @@ class KISS_Woo_COS_Search {
             }
         }
 
+        // Apply filters if provided (SOLID - Open/Closed Principle).
+        if ( ! empty( $filters ) ) {
+            $results = $this->apply_filters_to_results( $results, $filters );
+        }
+
         $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
 
         $this->debug_log(
@@ -179,9 +185,29 @@ class KISS_Woo_COS_Search {
                 'path'          => $used_path,
                 'lookup_debug'  => $this->last_lookup_debug,
                 'results_users' => is_array( $users ) ? count( $users ) : 0,
+                'filters_count' => count( $filters ),
                 'elapsed_ms'    => round( $elapsed_ms, 2 ),
             )
         );
+
+        return $results;
+    }
+
+    /**
+     * Apply filters to search results.
+     *
+     * Follows SOLID Open/Closed Principle: extend functionality without modifying existing code.
+     *
+     * @param array $results Search results.
+     * @param array $filters Array of KISS_Woo_Order_Filter instances.
+     * @return array Filtered results.
+     */
+    private function apply_filters_to_results( array $results, array $filters ): array {
+        foreach ( $filters as $filter ) {
+            if ( $filter instanceof KISS_Woo_Order_Filter ) {
+                $results = $filter->apply( $results );
+            }
+        }
 
         return $results;
     }

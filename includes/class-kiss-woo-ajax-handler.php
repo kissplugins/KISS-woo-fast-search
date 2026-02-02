@@ -122,6 +122,9 @@ class KISS_Woo_Ajax_Handler {
         $cache          = new KISS_Woo_Search_Cache();
         $order_resolver = new KISS_Woo_Order_Resolver( $cache );
 
+        // Get filters from request (SOLID - Open/Closed Principle).
+        $filters = $this->get_filters_from_request();
+
         if ( 'coupons' === $scope ) {
             $coupon_search = new KISS_Woo_Coupon_Search();
 
@@ -157,8 +160,8 @@ class KISS_Woo_Ajax_Handler {
 
         // Customer search.
         $done      = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'customer_search' );
-        $customers = $search->search_customers( $term );
-        $done( array( 'count' => count( $customers ) ) );
+        $customers = $search->search_customers( $term, $filters );
+        $done( array( 'count' => count( $customers ), 'filters' => count( $filters ) ) );
 
         // Guest order search.
         $done         = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'guest_search' );
@@ -206,5 +209,26 @@ class KISS_Woo_Ajax_Handler {
             'redirect_url'             => $redirect_url,
             'search_scope'             => $scope,
         );
+    }
+
+    /**
+     * Get filters from AJAX request.
+     *
+     * @return array Array of KISS_Woo_Order_Filter instances.
+     */
+    private function get_filters_from_request(): array {
+        $filters = array();
+
+        // Check for wholesale_only parameter.
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified in handle_search_request().
+        if ( isset( $_POST['wholesale_only'] ) && '1' === $_POST['wholesale_only'] ) {
+            $filters[] = new KISS_Woo_Wholesale_Filter();
+
+            KISS_Woo_Debug_Tracer::log( 'AjaxHandler', 'filter_applied', array(
+                'filter' => 'wholesale',
+            ) );
+        }
+
+        return $filters;
     }
 }

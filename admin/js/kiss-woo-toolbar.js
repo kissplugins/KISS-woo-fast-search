@@ -13,6 +13,7 @@
     const toolbar = document.getElementById('floating-search-toolbar');
     const input = document.getElementById('floating-search-input');
     const submitBtn = document.getElementById('floating-search-submit');
+    const wholesaleBtn = document.getElementById('floating-search-wholesale');
     const scopeInputs = document.querySelectorAll('input[name="kiss-search-scope"]');
 
     if (!toolbar || !input || !submitBtn || !scopeInputs.length) {
@@ -288,6 +289,37 @@
             handleSearch();
         }
     });
+
+    // Wholesale button handler
+    if (wholesaleBtn) {
+        wholesaleBtn.addEventListener('click', function() {
+            const searchTerm = input.value.trim();
+
+            if (!searchTerm) {
+                input.focus();
+                return;
+            }
+
+            if (floatingSearchBar && floatingSearchBar.minChars && searchTerm.length < floatingSearchBar.minChars) {
+                alert('Please enter at least ' + floatingSearchBar.minChars + ' characters');
+                input.focus();
+                return;
+            }
+
+            // Redirect to admin page with wholesale filter
+            const baseUrl = (floatingSearchBar && floatingSearchBar.searchUrl) ? floatingSearchBar.searchUrl : '';
+            if (!baseUrl) {
+                return;
+            }
+
+            if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                console.log('🏷️ KISS Toolbar: Wholesale search for:', searchTerm);
+            }
+
+            transitionTo(ToolbarState.REDIRECTING_SEARCH);
+            window.location.href = baseUrl + '&q=' + encodeURIComponent(searchTerm) + '&wholesale_only=1';
+        });
+    }
 
     // Clear safety timeout on successful navigation
     window.addEventListener('beforeunload', function() {

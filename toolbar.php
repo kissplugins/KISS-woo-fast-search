@@ -147,6 +147,14 @@ class KISS_Woo_COS_Floating_Search_Bar {
                     >
                         <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
                     </button>
+                    <button
+                        type="button"
+                        id="floating-search-wholesale"
+                        class="floating-search-wholesale"
+                        title="<?php esc_attr_e( 'Search wholesale orders only', 'kiss-woo-customer-order-search' ); ?>"
+                    >
+                        <?php esc_html_e( 'Search Wholesale Orders Only', 'kiss-woo-customer-order-search' ); ?>
+                    </button>
                 </div>
             </div>
         </div>

@@ -96,13 +96,21 @@ class KISS_Woo_COS_Admin_Page {
             true
         );
 
+        // Check for URL parameters.
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL parameters.
+        $wholesale_only = isset( $_GET['wholesale_only'] ) && '1' === $_GET['wholesale_only'];
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL parameters.
+        $initial_search = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
+
         wp_localize_script(
             'kiss-woo-cos-admin',
             'KISSCOS',
             array(
-                'ajax_url' => admin_url( 'admin-ajax.php' ),
-                'nonce'    => wp_create_nonce( 'kiss_woo_cos_search' ),
-                'i18n'     => array(
+                'ajax_url'       => admin_url( 'admin-ajax.php' ),
+                'nonce'          => wp_create_nonce( 'kiss_woo_cos_search' ),
+                'wholesale_only' => $wholesale_only,
+                'initial_search' => $initial_search,
+                'i18n'           => array(
                     'searching'      => __( 'Searching...', 'kiss-woo-customer-order-search' ),
                     'no_results'     => __( 'No matching customers found.', 'kiss-woo-customer-order-search' ),
                     'no_coupons'     => __( 'No matching coupons found.', 'kiss-woo-customer-order-search' ),

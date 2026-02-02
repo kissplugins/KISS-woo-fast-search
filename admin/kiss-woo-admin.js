@@ -317,7 +317,8 @@ jQuery(function ($) {
                 action: 'kiss_woo_customer_search',
                 nonce: KISSCOS.nonce,
                 q: q,
-                scope: scope
+                scope: scope,
+                wholesale_only: (KISSCOS.wholesale_only ? '1' : '0')
             }
         }).done(function (resp) {
             // Debug: Log the full response
