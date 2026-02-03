@@ -99,7 +99,7 @@ class KISS_Woo_COS_Search {
             $is_email_search = ( false !== strpos( $term, '@' ) );
 
             $user_query_args = array(
-                'number'                 => 20,
+                'number'                 => 40,
                 'fields'                 => $user_fields,
                 'orderby'                => 'registered',
                 'order'                  => 'DESC',
@@ -227,7 +227,7 @@ class KISS_Woo_COS_Search {
      *
      * @return int[]
      */
-    protected function search_user_ids_via_customer_lookup( $term, $limit = 20 ) {
+    protected function search_user_ids_via_customer_lookup( $term, $limit = 40 ) {
         global $wpdb;
 
         $this->last_lookup_debug = array(
@@ -1581,7 +1581,7 @@ class KISS_Woo_COS_Search {
 
         $orders = wc_get_orders(
             array(
-                'limit'         => 20,
+                'limit'         => 40,
                 'orderby'       => 'date',
                 'order'         => 'DESC',
                 'status'        => array_keys( wc_get_order_statuses() ),

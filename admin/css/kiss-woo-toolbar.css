@@ -46,6 +46,10 @@
     height: 100%;
 }
 
+.floating-search-toolbar__section--left {
+    margin-right: auto;
+}
+
 .floating-search-toolbar__section--search {
     margin-left: auto;
     gap: 10px;
@@ -157,6 +161,88 @@
     color: #999;
 }
 
+/* Context-aware toolbar: Disable scope toggle in listing mode */
+.floating-search-toolbar--listing-mode .floating-search-toggle {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* Dropdown menu */
+.floating-search-dropdown {
+    position: relative;
+}
+
+.floating-search-menu-toggle {
+    background: transparent;
+    border: none;
+    color: rgb(240, 240, 241);
+    cursor: pointer;
+    font-size: 13px;
+    height: 32px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.1s ease-in-out, color 0.1s ease-in-out;
+}
+
+.floating-search-menu-toggle:hover,
+.floating-search-menu-toggle:focus,
+.floating-search-menu-toggle[aria-expanded="true"] {
+    background: #2271b1;
+    color: #fff;
+    outline: none;
+}
+
+.floating-search-menu-arrow {
+    font-size: 10px;
+    transition: transform 0.2s ease-in-out;
+}
+
+.floating-search-menu-toggle[aria-expanded="true"] .floating-search-menu-arrow {
+    transform: rotate(180deg);
+}
+
+.floating-search-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    min-width: 200px;
+    z-index: 10000;
+    display: none;
+}
+
+.floating-search-menu[aria-hidden="false"] {
+    display: block;
+}
+
+.floating-search-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    color: #1d2327;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s ease-in-out;
+}
+
+.floating-search-menu-item:hover,
+.floating-search-menu-item:focus {
+    background: #f0f0f1;
+    outline: none;
+}
+
 /* Button styled like admin bar items */
 .floating-search-submit {
     background: transparent;
@@ -177,7 +263,8 @@
 }
 
 @media screen and (max-width: 782px) {
-    .floating-search-submit {
+    .floating-search-submit,
+    .floating-search-menu-toggle {
         height: 46px;
     }
 
