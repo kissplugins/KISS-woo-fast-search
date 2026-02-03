@@ -1057,7 +1057,7 @@ class KISS_Woo_COS_Search {
 
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
-        // Instead, fetch matching order IDs with a direct legacy SQL query (IN list),
+        // Instead, fetch matching order IDs with a direct SQL query (IN list),
         // then hydrate those orders in one go.
 
         $statuses = array_keys( wc_get_order_statuses() );
@@ -1069,29 +1069,48 @@ class KISS_Woo_COS_Search {
         // (Worst case: many recent orders belong to one customer.)
         $candidate_limit = count( $user_ids ) * 10 * 5;
 
+        // Detect HPOS to use correct table structure.
+        $use_hpos = KISS_Woo_Utils::is_hpos_enabled();
+
         $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
         $user_placeholders   = implode( ',', array_fill( 0, count( $user_ids ), '%s' ) );
 
-        $sql = $wpdb->prepare(
-            "SELECT p.ID AS order_id, pm.meta_value AS customer_id
-             FROM {$wpdb->posts} p
-             INNER JOIN {$wpdb->postmeta} pm
-                ON p.ID = pm.post_id
-               AND pm.meta_key = '_customer_user'
-             WHERE p.post_type = 'shop_order'
-               AND p.post_status IN ({$status_placeholders})
-               AND pm.meta_value IN ({$user_placeholders})
-             ORDER BY p.post_date_gmt DESC
-             LIMIT %d",
-            array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
-        );
+        if ( $use_hpos ) {
+            // HPOS: Query wc_orders table.
+            $orders_table = $wpdb->prefix . 'wc_orders';
+            $sql = $wpdb->prepare(
+                "SELECT id AS order_id, customer_id
+                 FROM {$orders_table}
+                 WHERE type = 'shop_order'
+                   AND status IN ({$status_placeholders})
+                   AND customer_id IN ({$user_placeholders})
+                 ORDER BY date_created_gmt DESC
+                 LIMIT %d",
+                array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
+            );
+        } else {
+            // Legacy: Query wp_posts and wp_postmeta.
+            $sql = $wpdb->prepare(
+                "SELECT p.ID AS order_id, pm.meta_value AS customer_id
+                 FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm
+                    ON p.ID = pm.post_id
+                   AND pm.meta_key = '_customer_user'
+                 WHERE p.post_type = 'shop_order'
+                   AND p.post_status IN ({$status_placeholders})
+                   AND pm.meta_value IN ({$user_placeholders})
+                 ORDER BY p.post_date_gmt DESC
+                 LIMIT %d",
+                array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
+            );
+        }
 
         $t_sql_start = microtime( true );
         $rows = $wpdb->get_results( $sql );
         $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        error_log( '[KISS_WOO_COS] get_recent_orders SQL done (' . ( $use_hpos ? 'HPOS' : 'legacy' ) . ') - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
 
         if ( empty( $rows ) ) {
             return $results;

@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.11] - 2026-02-03
+
+### Fixed
+- **CRITICAL: HPOS support missing in recent orders**: Fixed `get_recent_orders_for_customers()` ignoring HPOS-stored orders
+  - **Issue**: Method only queried `wp_posts` and `wp_postmeta` (legacy shop_order storage), ignoring `wc_orders` table
+  - **Problem**: When WooCommerce HPOS (High-Performance Order Storage) is enabled, orders are stored in `wc_orders` table, not `wp_posts`
+  - **Impact**: On HPOS-enabled sites, customer search results showed 0 recent orders for every customer, even when they had orders
+  - **Solution**:
+    - Added HPOS detection using `KISS_Woo_Utils::is_hpos_enabled()`
+    - When HPOS enabled: Query `wc_orders` table by `customer_id` with `date_created_gmt` ordering
+    - When HPOS disabled: Use legacy `wp_posts` + `wp_postmeta` query (backward compatible)
+    - Order hydration already supported HPOS via `get_order_data_via_sql()` (no changes needed)
+  - **Files Modified**:
+    - `includes/class-kiss-woo-search.php` - Lines 1035-1113 (added HPOS detection and dual query paths)
+  - **Performance**: No performance impact - same query structure, just different tables
+  - **Observability**: Added HPOS/legacy indicator to debug logs
+
+### Technical Notes
+- **HPOS Query**: `SELECT id, customer_id FROM wc_orders WHERE type='shop_order' AND status IN (...) AND customer_id IN (...) ORDER BY date_created_gmt DESC`
+- **Legacy Query**: `SELECT p.ID, pm.meta_value FROM wp_posts p JOIN wp_postmeta pm WHERE p.post_type='shop_order' AND p.post_status IN (...) AND pm.meta_value IN (...) ORDER BY p.post_date_gmt DESC`
+- **Backward Compatibility**: Legacy sites (HPOS disabled) continue to use existing query path
+- **Related Methods**: `get_order_data_via_sql()` already had HPOS support (lines 676-695), so order hydration worked correctly
+
+---
+
 ## [1.2.10] - 2026-02-03
 
 ### Fixed
