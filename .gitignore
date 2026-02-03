@@ -10,3 +10,6 @@ composer.phar
 .phpunit.cache/
 /temp/
 temp/
+wpcc-admin-scan.json
+wpcc-includes-scan.json
+wpcc-scan.json
