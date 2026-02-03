@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.10] - 2026-02-03
+
+### Fixed
+- **CRITICAL: Wholesale filter contract mismatch**: Fixed wholesale filter returning empty results due to data structure mismatch
+  - **Issue**: `search_customers()` returned flat array but `KISS_Woo_Wholesale_Filter::apply()` expected structured hash with 'customers', 'guest_orders', 'orders' keys
+  - **Problem**: Filter checked `isset($results['customers'])` which was false for flat array, causing it to return empty results
+  - **Impact**: Wholesale filter feature was completely broken - no customers or orders shown when "Wholesale only" was enabled
+  - **Solution**:
+    - Modified `search_customers()` to wrap results in structured hash when filters are present
+    - Updated AJAX handler to handle both flat array (no filters) and structured hash (with filters)
+    - Updated interface documentation to clarify the filter contract
+  - **Files Modified**:
+    - `includes/class-kiss-woo-search.php` - Lines 174-183 (wrap results for filters)
+    - `includes/class-kiss-woo-ajax-handler.php` - Lines 163-187 (handle both structures)
+    - `includes/interface-kiss-woo-order-filter.php` - Lines 16-46 (document contract)
+  - **SOLID Principle**: Fixed Interface Segregation violation - filter interface now has clear, documented contract
+  - **Backward Compatibility**: No breaking changes - flat array still returned when no filters applied
+
+### Technical Notes
+- **Filter Contract**: Filters now receive and return structured hash: `['customers' => [], 'guest_orders' => [], 'orders' => []]`
+- **Performance**: No performance impact - structure wrapping only happens when filters are present
+- **Observability**: Added debug logging to show structure type ('flat' vs 'hash') in AJAX handler
+
+---
+
 ## [1.2.9] - 2026-02-03
 
 ### Fixed

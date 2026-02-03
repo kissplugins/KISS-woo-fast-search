@@ -161,14 +161,28 @@ class KISS_Woo_Ajax_Handler {
         }
 
         // Customer search.
-        $done      = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'customer_search' );
-        $customers = $search->search_customers( $term, $filters );
-        $done( array( 'count' => count( $customers ), 'filters' => count( $filters ) ) );
+        $done             = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'customer_search' );
+        $customer_results = $search->search_customers( $term, $filters );
 
-        // Guest order search.
-        $done         = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'guest_search' );
-        $guest_orders = $search->search_guest_orders_by_email( $term );
-        $done( array( 'count' => count( $guest_orders ) ) );
+        // Handle both flat array (no filters) and structured hash (with filters).
+        if ( ! empty( $filters ) && isset( $customer_results['customers'] ) ) {
+            // Filters applied - structured response.
+            $customers    = $customer_results['customers'];
+            $guest_orders = isset( $customer_results['guest_orders'] ) ? $customer_results['guest_orders'] : array();
+            $done( array( 'count' => count( $customers ), 'filters' => count( $filters ), 'structure' => 'hash' ) );
+        } else {
+            // No filters - flat array response.
+            $customers    = $customer_results;
+            $guest_orders = array();
+            $done( array( 'count' => count( $customers ), 'filters' => count( $filters ), 'structure' => 'flat' ) );
+        }
+
+        // Guest order search (only if filters didn't already populate it).
+        if ( empty( $filters ) ) {
+            $done         = KISS_Woo_Debug_Tracer::start_timer( 'AjaxHandler', 'guest_search' );
+            $guest_orders = $search->search_guest_orders_by_email( $term );
+            $done( array( 'count' => count( $guest_orders ) ) );
+        }
 
         // Order number search (if term looks like an order number).
         $orders                   = array();

@@ -18,14 +18,22 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Implementations can filter orders by wholesale status, retail status,
  * B2B status, or any other criteria.
+ *
+ * CONTRACT:
+ * - Input: Structured hash with keys: 'customers', 'guest_orders', 'orders'
+ * - Output: Structured hash with same keys (filtered)
+ * - Filters receive and return the same structure for consistency
  */
 interface KISS_Woo_Order_Filter {
 
 	/**
 	 * Apply filter to search results.
 	 *
-	 * @param array $results Search results from KISS_Woo_Search::search_customers().
-	 * @return array Filtered results.
+	 * @param array $results Structured hash with keys:
+	 *                       - 'customers' (array): Customer objects with orders_list
+	 *                       - 'guest_orders' (array): Guest order objects
+	 *                       - 'orders' (array): Direct order matches (pass-through)
+	 * @return array Filtered results with same structure.
 	 */
 	public function apply( array $results ): array;
 

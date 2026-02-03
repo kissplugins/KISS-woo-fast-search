@@ -67,7 +67,8 @@ class KISS_Woo_COS_Search {
      * @param string $term Search term.
      * @param array  $filters Optional array of KISS_Woo_Order_Filter instances.
      *
-     * @return array
+     * @return array Flat array of customers if no filters, or structured hash if filters applied.
+     *               Structured hash contains: 'customers', 'guest_orders', 'orders'.
      */
     public function search_customers( $term, $filters = array() ) {
         $t0 = microtime( true );
@@ -172,8 +173,14 @@ class KISS_Woo_COS_Search {
         }
 
         // Apply filters if provided (SOLID - Open/Closed Principle).
+        // When filters are present, wrap results in structured hash for filter contract.
         if ( ! empty( $filters ) ) {
-            $results = $this->apply_filters_to_results( $results, $filters );
+            $structured_results = array(
+                'customers'    => $results,
+                'guest_orders' => array(), // Filters may populate this
+                'orders'       => array(), // Filters may populate this
+            );
+            $results = $this->apply_filters_to_results( $structured_results, $filters );
         }
 
         $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
