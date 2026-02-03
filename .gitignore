@@ -13,3 +13,5 @@ temp/
 wpcc-admin-scan.json
 wpcc-includes-scan.json
 wpcc-scan.json
+wpcc-root-scan.json
+wpcc-full-scan.json

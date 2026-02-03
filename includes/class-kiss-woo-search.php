@@ -165,7 +165,7 @@ class KISS_Woo_COS_Search {
                     'registered'    => $registered,
                     'registered_h'  => esc_html( $this->format_date_human( $registered ) ),
                     'orders'        => $order_count,
-                    'edit_url'      => esc_url( get_edit_user_link( $user_id ) ),
+                    'edit_url'      => get_edit_user_link( $user_id ), // Don't escape - already safe from admin_url() and will be used in JavaScript
                     'orders_list'   => $orders_list,
                 );
             }

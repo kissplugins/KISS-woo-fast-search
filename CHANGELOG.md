@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.9] - 2026-02-03
+
+### Fixed
+- **Security: Removed HTML escaping from JSON URL fields**: Fixed double-escaping issue in user edit URLs
+  - **Issue**: User edit URLs in JSON responses were being escaped with `esc_url()`, causing `&` to become `&#038;`
+  - **Problem**: JavaScript redirects and URL handling would break due to HTML entities in URLs
+  - **Impact**: Potential issues with user profile links when used in JavaScript contexts
+  - **Solution**: Removed `esc_url()` from `edit_url` field in JSON response (line 168 in `class-kiss-woo-search.php`)
+  - **Security**: URLs are already safe from `get_edit_user_link()` which uses `admin_url()`, and JavaScript properly escapes URLs when rendering to HTML
+  - **Pattern**: Follows same fix previously applied to order URLs in `class-kiss-woo-order-formatter.php`
+  - **Verification**: WPCC security scan now passes with 0 warnings (previously had 1 warning)
+  - **Reference**: See `PROJECT/3-COMPLETED/DOUBLE-ESCAPE-BUG-FIX.md` for detailed explanation
+
+### Security
+- **WPCC Security Audit**: Full codebase scan completed with AI-DDTK WordPress Code Check tool
+  - **Results**: 0 critical errors, 0 warnings, all 40 security and performance checks passed
+  - **Files Analyzed**: 1,215 files (134,848 lines of code including vendor dependencies)
+  - **Checks Passed**:
+    - ✅ No unbounded database queries
+    - ✅ No direct superglobal access without sanitization
+    - ✅ No missing nonce verification
+    - ✅ No SQL injection vulnerabilities
+    - ✅ No N+1 query patterns
+    - ✅ No missing transient caching issues
+    - ✅ All AJAX handlers have proper nonce validation
+    - ✅ All admin functions have capability checks
+  - **Report**: `wpcc-security-audit-report.html` (39.1KB)
+
+---
+
 ## [1.2.8] - 2026-02-02
 
 ### Fixed
