@@ -1,0 +1,36 @@
+{
+  "version": "2.0.14",
+  "timestamp": "2026-02-03T00:18:50Z",
+  "project": {
+    "type": "plugin",
+    "name": "KISS - Faster Customer & Order Search",
+    "version": "1.2.9",
+    "description": "Super-fast customer and WooCommerce order search for support teams. Search by email or name in one simple admin screen.",
+    "author": "Vishal Kharche",
+    "path": "/Users/noelsaw/Local Sites/1-bloomzhemp-production-sync-07-24/app/public/wp-content/plugins/KISS-woo-fast-search",
+    "files_analyzed": 1216,
+    "lines_of_code": 134889
+  },
+  "paths_scanned": "/Users/noelsaw/Local Sites/1-bloomzhemp-production-sync-07-24/app/public/wp-content/plugins/KISS-woo-fast-search",
+  "strict_mode": false,
+  "summary": {
+    "total_errors": 0,
+    "total_warnings": 0,
+    "magic_string_violations": 0,
+    "clone_detection_ran": true,
+    "files_analyzed": 1216,
+    "lines_of_code": 134889,
+    "baselined": 0,
+    "stale_baseline": 0,
+    "exit_code": 0
+  },
+  "fixture_validation": {
+    "status": "passed",
+    "passed": 20,
+    "failed": 0,
+    "message": "Detection patterns verified against 20 test fixtures"
+  },
+  "findings": [],
+  "checks": [{"name":"Debug code in production","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Sensitive data in localStorage/sessionStorage","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Serialization of objects to client storage","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"User input in RegExp without escaping (HCC-008)","impact":"MEDIUM","status":"passed","findings_count":0},{"name":"Direct superglobal manipulation","impact":"HIGH","status":"passed","findings_count":0},{"name":"Unsanitized superglobal read ($_GET/$_POST)","impact":"HIGH","status":"passed","findings_count":0},{"name":"Insecure data deserialization","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Direct file write with user-controlled path","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Direct database queries without $wpdb->prepare()","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Admin functions without capability checks","impact":"HIGH","status":"passed","findings_count":0},{"name":"wp_ajax handlers without nonce validation","impact":"HIGH","status":"passed","findings_count":0},{"name":"Unbounded wc_get_orders/wc_get_products limit","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"get_users without number limit","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"get_terms without number limit","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Unbounded wc_get_orders()","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Unbounded wc_get_products()","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Unbounded WP_Query/get_posts","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"WP_User_Query meta bloat","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Potential query limit multipliers (count() * N)","impact":"MEDIUM","status":"passed","findings_count":0},{"name":"Unvalidated cron intervals","impact":"HIGH","status":"passed","findings_count":0},{"name":"Potential N+1 patterns (meta in loops)","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"WooCommerce N+1 patterns (WC functions in loops)","impact":"HIGH","status":"passed","findings_count":0},{"name":"WooCommerce coupon logic in thank-you context","impact":"HIGH","status":"passed","findings_count":0},{"name":"WooCommerce Smart Coupons performance issues","impact":"HIGH","status":"passed","findings_count":0},{"name":"HTML-escaping in JSON response URL fields (heuristic)","impact":"MEDIUM","status":"passed","findings_count":0},{"name":"Dangerous eval() usage in PHP","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Duplicate transient keys across files","impact":"MEDIUM","status":"passed","findings_count":0},{"name":"Direct file write with user-controlled path","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Direct database queries without $wpdb->prepare()","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Unsanitized superglobal read ($_GET/$_POST/$_REQUEST)","impact":"HIGH","status":"passed","findings_count":0},{"name":"Shell command execution functions in PHP (shell_exec/exec/system/passthru)","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Hardcoded credentials in PHP","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Duplicate capability strings across files","impact":"LOW","status":"passed","findings_count":0},{"name":"Unsanitized superglobal read ($_GET/$_POST)","impact":"HIGH","status":"passed","findings_count":0},{"name":"Unbounded wc_get_products()","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Query limit multiplier derived from count()","impact":"MEDIUM","status":"passed","findings_count":0},{"name":"Unbounded wc_get_orders()","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Duplicate option names across files","impact":"MEDIUM","status":"passed","findings_count":0},{"name":"WP_User_Query Full Meta Hydration","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"Dynamic PHP include/require with variables","impact":"CRITICAL","status":"passed","findings_count":0},{"name":"LIKE queries with leading wildcards","impact":"MEDIUM","status":"passed","findings_count":0}],
+  "magic_string_violations": []
+}
