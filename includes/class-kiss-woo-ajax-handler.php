@@ -390,7 +390,7 @@ class KISS_Woo_Ajax_Handler {
      * @return array|null
      */
     private function get_debug_data(): ?array {
-        if ( ! defined( 'KISS_WOO_DEBUG' ) || ! KISS_WOO_DEBUG ) {
+        if ( ! defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) || ! KISS_WOO_FAST_SEARCH_DEBUG ) {
             return null;
         }
 

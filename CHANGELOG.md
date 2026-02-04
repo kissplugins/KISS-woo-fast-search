@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.13] - 2026-02-04
+
+### Fixed
+- **LOW: Benchmark page default email contains PII**: Changed default benchmark query from personal email to team email
+  - **Issue**: Default query hardcoded as `$query = 'vishal@neochro.me';` (personal PII)
+  - **Impact**: Personal email exposed in production code; not production-ready
+  - **Solution**: Changed default to `devops@neochro.me` (team/role-based email)
+  - **Files Modified**:
+    - `admin/class-kiss-woo-admin-page.php` - Line 189 (changed default query)
+  - **Result**: No personal PII in production code; benchmark page uses team email by default
+
+### Technical Notes
+- **Benchmark Page**: Located at WooCommerce → KISS Benchmark
+- **Default Query**: Now uses `devops@neochro.me` instead of personal email
+- **User Override**: Users can still test with any email via query parameter `?q=email@example.com`
+
+---
+
+## [1.2.12] - 2026-02-03
+
+### Fixed
+- **HIGH: Wrong debug constant in list handlers**: Fixed `get_debug_data()` using wrong constant, preventing debug data from being attached to wholesale/recent order list responses
+  - **Issue**: `handle_search()` uses `KISS_WOO_FAST_SEARCH_DEBUG` but `get_debug_data()` checked `KISS_WOO_DEBUG` (non-existent constant)
+  - **Impact**: Wholesale and recent order list responses never included debug traces, even when debug mode was enabled
+  - **Solution**: Changed `get_debug_data()` to use `KISS_WOO_FAST_SEARCH_DEBUG` (consistent with rest of plugin)
+  - **Files Modified**:
+    - `includes/class-kiss-woo-ajax-handler.php` - Line 393 (changed constant check)
+  - **Affected Endpoints**: `handle_list_wholesale_orders()`, `handle_list_recent_orders()`
+  - **Result**: Debug data now correctly attached to all AJAX responses when debug mode enabled
+
+- **MEDIUM: Verbose error_log() in production**: Gated 10 unconditional `error_log()` calls behind debug flag to prevent log noise in production
+  - **Issue**: Multiple `error_log()` calls in `class-kiss-woo-search.php` ran regardless of debug mode
+  - **Impact**: Noisy production logs with SQL queries, timing data, memory usage; potential information disclosure
+  - **Solution**: Wrapped all verbose logging in `if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG )` checks
+  - **Files Modified**:
+    - `includes/class-kiss-woo-search.php` - Lines 262, 302, 309, 447, 454, 470, 1067, 1126, 1162, 1173
+  - **Logs Gated**:
+    - Lookup table not found warnings
+    - Name-pair SQL queries and timing
+    - Order count queries (HPOS/legacy) start/done
+    - Recent orders queries start/done
+    - Order hydration start/done
+  - **Result**: Clean production logs; verbose debugging only when explicitly enabled
+
+### Technical Notes
+- **Debug Constant**: Plugin uses `KISS_WOO_FAST_SEARCH_DEBUG` throughout (not `KISS_WOO_DEBUG`)
+- **Enable Debug Mode**: Add `define( 'KISS_WOO_FAST_SEARCH_DEBUG', true );` to `wp-config.php`
+- **Debug Data Structure**: `{ traces, memory_peak_mb, php_version, wc_version }`
+- **Performance**: No performance impact - debug checks are simple constant lookups
+
+---
+
 ## [1.2.11] - 2026-02-03
 
 ### Fixed

@@ -258,8 +258,10 @@ class KISS_Woo_COS_Search {
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         if ( $exists !== $table ) {
             $this->last_lookup_debug['enabled'] = false;
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
+            if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
+            }
             return array();
         }
 
@@ -298,15 +300,19 @@ class KISS_Woo_COS_Search {
                 $sql = $wpdb->remove_placeholder_escape( $sql );
             }
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+            if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+            }
 
             $t_start = microtime( true );
             $ids = $wpdb->get_col( $sql );
             $t_elapsed = round( ( microtime( true ) - $t_start ) * 1000, 2 );
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+            if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+            }
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
@@ -440,16 +446,20 @@ class KISS_Woo_COS_Search {
 
         $t_counts_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         try {
             if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
                 $counts = $this->get_order_counts_hpos( $user_ids );
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+                if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                    // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                    error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+                }
                 return $counts + $order_counts;
             }
         } catch ( Exception $e ) {
@@ -458,8 +468,10 @@ class KISS_Woo_COS_Search {
 
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         return $legacy_counts + $order_counts;
     }
@@ -1052,8 +1064,10 @@ class KISS_Woo_COS_Search {
 
         $t_orders_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
@@ -1109,8 +1123,10 @@ class KISS_Woo_COS_Search {
         $rows = $wpdb->get_results( $sql );
         $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders SQL done (' . ( $use_hpos ? 'HPOS' : 'legacy' ) . ') - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_recent_orders SQL done (' . ( $use_hpos ? 'HPOS' : 'legacy' ) . ') - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         if ( empty( $rows ) ) {
             return $results;
@@ -1143,8 +1159,10 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         // IMPORTANT: Avoid wc_get_orders() - it triggers expensive hooks/plugins on large sites.
         // Use direct SQL to fetch only the fields we need for display.
@@ -1152,8 +1170,10 @@ class KISS_Woo_COS_Search {
         $order_data = $this->get_order_data_via_sql( $all_order_ids );
         $t_hydrate_elapsed = round( ( microtime( true ) - $t_hydrate_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         if ( empty( $order_data ) ) {
             return $results;

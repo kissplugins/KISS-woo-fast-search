@@ -186,7 +186,7 @@ class KISS_Woo_COS_Admin_Page {
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-benchmark.php';
 
         // Verify nonce if query parameter is present
-        $query = 'vishal@neochro.me'; // Default query
+        $query = 'devops@neochro.me'; // Default query
         $results = null;
 
         if ( isset( $_GET['q'] ) && isset( $_GET['_wpnonce'] ) ) {
