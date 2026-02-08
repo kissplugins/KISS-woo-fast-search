@@ -8,3 +8,10 @@ composer.phar
 # PHPUnit
 .phpunit.result.cache
 .phpunit.cache/
+/temp/
+temp/
+wpcc-admin-scan.json
+wpcc-includes-scan.json
+wpcc-scan.json
+wpcc-root-scan.json
+wpcc-full-scan.json

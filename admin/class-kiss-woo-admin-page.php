@@ -96,18 +96,38 @@ class KISS_Woo_COS_Admin_Page {
             true
         );
 
+        // Check for URL parameters.
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL parameters.
+        $wholesale_only = isset( $_GET['wholesale_only'] ) && '1' === $_GET['wholesale_only'];
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL parameters.
+        $list_wholesale = isset( $_GET['list_wholesale'] ) && '1' === $_GET['list_wholesale'];
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL parameters.
+        $list_recent = isset( $_GET['list_recent'] ) && '1' === $_GET['list_recent'];
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL parameters.
+        $initial_search = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
+
         wp_localize_script(
             'kiss-woo-cos-admin',
             'KISSCOS',
             array(
-                'ajax_url' => admin_url( 'admin-ajax.php' ),
-                'nonce'    => wp_create_nonce( 'kiss_woo_cos_search' ),
-                'i18n'     => array(
+                'ajax_url'       => admin_url( 'admin-ajax.php' ),
+                'nonce'          => wp_create_nonce( 'kiss_woo_cos_search' ),
+                'wholesale_only' => $wholesale_only,
+                'list_wholesale' => $list_wholesale,
+                'list_recent'    => $list_recent,
+                'initial_search' => $initial_search,
+                'i18n'           => array(
                     'searching'      => __( 'Searching...', 'kiss-woo-customer-order-search' ),
+                    'listing'        => __( 'Loading wholesale orders...', 'kiss-woo-customer-order-search' ),
+                    'listing_recent' => __( 'Loading recent orders...', 'kiss-woo-customer-order-search' ),
                     'no_results'     => __( 'No matching customers found.', 'kiss-woo-customer-order-search' ),
+                    'no_wholesale'   => __( 'No wholesale orders found.', 'kiss-woo-customer-order-search' ),
+                    'no_recent'      => __( 'No recent orders found.', 'kiss-woo-customer-order-search' ),
                     'no_coupons'     => __( 'No matching coupons found.', 'kiss-woo-customer-order-search' ),
                     'guest_title'    => __( 'Guest Orders (no account)', 'kiss-woo-customer-order-search' ),
                     'matching_orders'=> __( 'Matching Orders', 'kiss-woo-customer-order-search' ),
+                    'wholesale_title'=> __( 'Wholesale Orders', 'kiss-woo-customer-order-search' ),
+                    'recent_title'   => __( 'Most Recent 50 Orders', 'kiss-woo-customer-order-search' ),
                     'coupon_title'   => __( 'Matching Coupons', 'kiss-woo-customer-order-search' ),
                 ),
             )
@@ -166,7 +186,7 @@ class KISS_Woo_COS_Admin_Page {
         require_once KISS_WOO_COS_PATH . 'admin/class-kiss-woo-benchmark.php';
 
         // Verify nonce if query parameter is present
-        $query = 'vishal@neochro.me'; // Default query
+        $query = 'devops@neochro.me'; // Default query
         $results = null;
 
         if ( isset( $_GET['q'] ) && isset( $_GET['_wpnonce'] ) ) {

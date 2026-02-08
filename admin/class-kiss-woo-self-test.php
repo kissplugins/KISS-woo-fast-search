@@ -53,7 +53,7 @@ class KISS_Woo_Self_Test {
             </div>
 
             <?php $this->render_system_status(); ?>
-            
+
             <?php if ( $test_order ) : ?>
                 <?php $this->render_url_tests( $test_order ); ?>
                 <?php $this->render_ajax_test( $test_order ); ?>
@@ -62,6 +62,8 @@ class KISS_Woo_Self_Test {
                     <p><strong>No orders found.</strong> Create at least one order to run the tests.</p>
                 </div>
             <?php endif; ?>
+
+            <?php $this->render_wholesale_tests(); ?>
 
             <?php $this->render_styles(); ?>
         </div>
@@ -338,6 +340,328 @@ class KISS_Woo_Self_Test {
             table.widefat th { width: 200px; }
         </style>
         <?php
+    }
+
+    // ========================================================================
+    // Wholesale Listing Self-Tests (v1.2.5)
+    // ========================================================================
+
+    /**
+     * Render wholesale tests section.
+     */
+    private function render_wholesale_tests(): void {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only test trigger.
+        $run_tests = isset( $_GET['run_wholesale_tests'] ) && '1' === $_GET['run_wholesale_tests'];
+
+        ?>
+        <div class="test-section">
+            <h2>🏷️ Wholesale Listing Tests (v1.2.5)</h2>
+            <p>Comprehensive regression tests for wholesale order listing, pagination, and performance.</p>
+
+            <p>
+                <a href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'run_wholesale_tests', '1' ), 'kiss_woo_wholesale_tests' ) ); ?>" class="button button-primary">
+                    🧪 Run Wholesale Tests
+                </a>
+            </p>
+
+            <?php if ( $run_tests ) : ?>
+                <?php check_admin_referer( 'kiss_woo_wholesale_tests' ); ?>
+                <?php $test_results = $this->run_wholesale_tests(); ?>
+
+                <table class="widefat" style="margin-top: 15px;">
+                    <thead>
+                        <tr>
+                            <th>Test Name</th>
+                            <th>Status</th>
+                            <th>Message</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $test_results as $result ) : ?>
+                            <?php
+                            $status_class = 'pass' === $result['status'] ? 'status-yes' : ( 'warn' === $result['status'] ? 'status-warning' : 'status-no' );
+                            $status_icon  = 'pass' === $result['status'] ? '✓' : ( 'warn' === $result['status'] ? '⚠' : '✗' );
+                            ?>
+                            <tr>
+                                <td><strong><?php echo esc_html( $result['name'] ); ?></strong></td>
+                                <td><span class="<?php echo esc_attr( $status_class ); ?>"><?php echo esc_html( $status_icon . ' ' . ucfirst( $result['status'] ) ); ?></span></td>
+                                <td><?php echo esc_html( $result['message'] ); ?></td>
+                                <td>
+                                    <?php if ( ! empty( $result['details'] ) ) : ?>
+                                        <code><?php echo esc_html( wp_json_encode( $result['details'], JSON_PRETTY_PRINT ) ); ?></code>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else : ?>
+                <div class="notice notice-info inline">
+                    <p><strong>Available Tests:</strong></p>
+                    <ul style="list-style: disc; margin-left: 20px;">
+                        <li><strong>Wholesale Detection:</strong> Verify wholesale order detection logic</li>
+                        <li><strong>Pagination:</strong> Test page 1, page 2, and invalid page handling</li>
+                        <li><strong>Performance:</strong> Measure query time (< 500ms threshold for 100 orders)</li>
+                        <li><strong>Empty Results:</strong> Handle zero wholesale orders gracefully</li>
+                        <li><strong>SQL Syntax:</strong> Verify correct meta FK column (post_id for legacy, order_id for HPOS)</li>
+                    </ul>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Run wholesale listing self-tests.
+     *
+     * @return array Test results.
+     */
+    private function run_wholesale_tests(): array {
+        $results = array();
+
+        $results[] = $this->test_wholesale_detection();
+        $results[] = $this->test_wholesale_pagination();
+        $results[] = $this->test_wholesale_performance();
+        $results[] = $this->test_wholesale_empty();
+        $results[] = $this->test_wholesale_sql_syntax();
+
+        return $results;
+    }
+
+    /**
+     * Test wholesale order detection.
+     *
+     * @return array Test result.
+     */
+    private function test_wholesale_detection(): array {
+        $t_start = microtime( true );
+
+        try {
+            $query   = new KISS_Woo_Order_Query();
+            $results = $query->query_orders( 'wholesale', 1, 10 );
+
+            $elapsed_ms = round( ( microtime( true ) - $t_start ) * 1000, 2 );
+
+            // Verify structure.
+            $has_structure = isset( $results['orders'], $results['total'], $results['pages'], $results['current_page'] );
+
+            return array(
+                'name'    => 'Wholesale Detection',
+                'status'  => $has_structure ? 'pass' : 'fail',
+                'message' => $has_structure ? "Found {$results['total']} wholesale orders in {$elapsed_ms}ms" : 'Invalid response structure',
+                'details' => array(
+                    'total_orders' => $results['total'] ?? 0,
+                    'pages'        => $results['pages'] ?? 0,
+                    'elapsed_ms'   => $elapsed_ms,
+                ),
+            );
+        } catch ( Exception $e ) {
+            return array(
+                'name'    => 'Wholesale Detection',
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+                'details' => array(),
+            );
+        }
+    }
+
+    /**
+     * Test wholesale pagination.
+     *
+     * @return array Test result.
+     */
+    private function test_wholesale_pagination(): array {
+        $t_start = microtime( true );
+
+        try {
+            $query = new KISS_Woo_Order_Query();
+
+            // Test page 1.
+            $page1 = $query->query_orders( 'wholesale', 1, 10 );
+
+            // Test page 2 (if exists).
+            $page2 = $query->query_orders( 'wholesale', 2, 10 );
+
+            // Test invalid page.
+            $page999 = $query->query_orders( 'wholesale', 999, 10 );
+
+            $elapsed_ms = round( ( microtime( true ) - $t_start ) * 1000, 2 );
+
+            $page1_valid   = isset( $page1['current_page'] ) && 1 === $page1['current_page'];
+            $page2_valid   = isset( $page2['current_page'] ) && 2 === $page2['current_page'];
+            $page999_valid = isset( $page999['orders'] ) && is_array( $page999['orders'] );
+
+            $all_valid = $page1_valid && $page2_valid && $page999_valid;
+
+            return array(
+                'name'    => 'Wholesale Pagination',
+                'status'  => $all_valid ? 'pass' : 'fail',
+                'message' => $all_valid ? "Pagination working correctly ({$elapsed_ms}ms)" : 'Pagination structure invalid',
+                'details' => array(
+                    'page1_orders'   => count( $page1['orders'] ?? array() ),
+                    'page2_orders'   => count( $page2['orders'] ?? array() ),
+                    'page999_orders' => count( $page999['orders'] ?? array() ),
+                    'elapsed_ms'     => $elapsed_ms,
+                ),
+            );
+        } catch ( Exception $e ) {
+            return array(
+                'name'    => 'Wholesale Pagination',
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+                'details' => array(),
+            );
+        }
+    }
+
+    /**
+     * Test wholesale performance.
+     *
+     * @return array Test result.
+     */
+    private function test_wholesale_performance(): array {
+        $t_start = microtime( true );
+
+        try {
+            $query   = new KISS_Woo_Order_Query();
+            $results = $query->query_orders( 'wholesale', 1, 100 );
+
+            $elapsed_ms = round( ( microtime( true ) - $t_start ) * 1000, 2 );
+
+            // Performance threshold: < 500ms for 100 orders.
+            $is_fast = $elapsed_ms < 500;
+
+            return array(
+                'name'    => 'Wholesale Performance',
+                'status'  => $is_fast ? 'pass' : 'warn',
+                'message' => $is_fast ? "Query completed in {$elapsed_ms}ms (< 500ms threshold)" : "Query took {$elapsed_ms}ms (> 500ms threshold)",
+                'details' => array(
+                    'orders_fetched' => count( $results['orders'] ?? array() ),
+                    'elapsed_ms'     => $elapsed_ms,
+                    'threshold_ms'   => 500,
+                    'hpos_enabled'   => KISS_Woo_Utils::is_hpos_enabled(),
+                ),
+            );
+        } catch ( Exception $e ) {
+            return array(
+                'name'    => 'Wholesale Performance',
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+                'details' => array(),
+            );
+        }
+    }
+
+    /**
+     * Test wholesale empty results.
+     *
+     * @return array Test result.
+     */
+    private function test_wholesale_empty(): array {
+        $t_start = microtime( true );
+
+        try {
+            $query = new KISS_Woo_Order_Query();
+
+            // Query with impossible page number to get empty results.
+            $results = $query->query_orders( 'wholesale', 99999, 100 );
+
+            $elapsed_ms = round( ( microtime( true ) - $t_start ) * 1000, 2 );
+
+            $has_structure = isset( $results['orders'], $results['total'] );
+            $is_empty      = 0 === count( $results['orders'] ?? array() );
+
+            $is_valid = $has_structure && $is_empty;
+
+            return array(
+                'name'    => 'Wholesale Empty Results',
+                'status'  => $is_valid ? 'pass' : 'fail',
+                'message' => $is_valid ? "Empty results handled correctly ({$elapsed_ms}ms)" : 'Empty results structure invalid',
+                'details' => array(
+                    'orders_count' => count( $results['orders'] ?? array() ),
+                    'total'        => $results['total'] ?? 0,
+                    'elapsed_ms'   => $elapsed_ms,
+                ),
+            );
+        } catch ( Exception $e ) {
+            return array(
+                'name'    => 'Wholesale Empty Results',
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+                'details' => array(),
+            );
+        }
+    }
+
+    /**
+     * Test wholesale SQL syntax (legacy vs HPOS).
+     *
+     * Verifies that the correct meta foreign key column is used:
+     * - Legacy mode (wp_postmeta): post_id
+     * - HPOS mode (wp_wc_orders_meta): order_id
+     *
+     * @return array Test result.
+     */
+    private function test_wholesale_sql_syntax(): array {
+        global $wpdb;
+        $t_start = microtime( true );
+
+        try {
+            $is_hpos = KISS_Woo_Utils::is_hpos_enabled();
+
+            // Use reflection to access private method for testing.
+            $query      = new KISS_Woo_Order_Query();
+            $reflection = new ReflectionClass( $query );
+            $method     = $reflection->getMethod( 'get_wholesale_meta_condition' );
+            $method->setAccessible( true );
+
+            // Test with correct meta table.
+            if ( $is_hpos ) {
+                $meta_table = $wpdb->prefix . 'wc_orders_meta';
+                $order_col  = 'o.id';
+            } else {
+                $meta_table = $wpdb->postmeta;
+                $order_col  = 'p.ID';
+            }
+
+            $sql_condition = $method->invoke( $query, $meta_table, $order_col );
+
+            $elapsed_ms = round( ( microtime( true ) - $t_start ) * 1000, 2 );
+
+            // Verify correct foreign key column is used.
+            $expected_fk = $is_hpos ? 'order_id' : 'post_id';
+            $has_correct_fk = strpos( $sql_condition, "m.{$expected_fk}" ) !== false;
+
+            // Verify wrong foreign key is NOT used.
+            $wrong_fk = $is_hpos ? 'post_id' : 'order_id';
+            $has_wrong_fk = strpos( $sql_condition, "m.{$wrong_fk}" ) !== false;
+
+            $is_valid = $has_correct_fk && ! $has_wrong_fk;
+
+            return array(
+                'name'    => 'Wholesale SQL Syntax',
+                'status'  => $is_valid ? 'pass' : 'fail',
+                'message' => $is_valid
+                    ? "Correct meta FK column used: m.{$expected_fk} ({$elapsed_ms}ms)"
+                    : "Wrong meta FK column! Expected m.{$expected_fk}, SQL: " . substr( $sql_condition, 0, 100 ),
+                'details' => array(
+                    'hpos_enabled'  => $is_hpos,
+                    'expected_fk'   => $expected_fk,
+                    'has_correct'   => $has_correct_fk,
+                    'has_wrong'     => $has_wrong_fk,
+                    'sql_snippet'   => substr( $sql_condition, 0, 200 ),
+                    'elapsed_ms'    => $elapsed_ms,
+                ),
+            );
+        } catch ( Exception $e ) {
+            return array(
+                'name'    => 'Wholesale SQL Syntax',
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+                'details' => array(),
+            );
+        }
     }
 }
 

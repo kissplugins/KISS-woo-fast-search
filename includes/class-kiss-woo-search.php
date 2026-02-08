@@ -65,10 +65,12 @@ class KISS_Woo_COS_Search {
      * Find matching customers by email or name.
      *
      * @param string $term Search term.
+     * @param array  $filters Optional array of KISS_Woo_Order_Filter instances.
      *
-     * @return array
+     * @return array Flat array of customers if no filters, or structured hash if filters applied.
+     *               Structured hash contains: 'customers', 'guest_orders', 'orders'.
      */
-    public function search_customers( $term ) {
+    public function search_customers( $term, $filters = array() ) {
         $t0 = microtime( true );
         $term = trim( $term );
 
@@ -98,7 +100,7 @@ class KISS_Woo_COS_Search {
             $is_email_search = ( false !== strpos( $term, '@' ) );
 
             $user_query_args = array(
-                'number'                 => 20,
+                'number'                 => 40,
                 'fields'                 => $user_fields,
                 'orderby'                => 'registered',
                 'order'                  => 'DESC',
@@ -164,10 +166,21 @@ class KISS_Woo_COS_Search {
                     'registered'    => $registered,
                     'registered_h'  => esc_html( $this->format_date_human( $registered ) ),
                     'orders'        => $order_count,
-                    'edit_url'      => esc_url( get_edit_user_link( $user_id ) ),
+                    'edit_url'      => get_edit_user_link( $user_id ), // Don't escape - already safe from admin_url() and will be used in JavaScript
                     'orders_list'   => $orders_list,
                 );
             }
+        }
+
+        // Apply filters if provided (SOLID - Open/Closed Principle).
+        // When filters are present, wrap results in structured hash for filter contract.
+        if ( ! empty( $filters ) ) {
+            $structured_results = array(
+                'customers'    => $results,
+                'guest_orders' => array(), // Filters may populate this
+                'orders'       => array(), // Filters may populate this
+            );
+            $results = $this->apply_filters_to_results( $structured_results, $filters );
         }
 
         $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
@@ -179,9 +192,29 @@ class KISS_Woo_COS_Search {
                 'path'          => $used_path,
                 'lookup_debug'  => $this->last_lookup_debug,
                 'results_users' => is_array( $users ) ? count( $users ) : 0,
+                'filters_count' => count( $filters ),
                 'elapsed_ms'    => round( $elapsed_ms, 2 ),
             )
         );
+
+        return $results;
+    }
+
+    /**
+     * Apply filters to search results.
+     *
+     * Follows SOLID Open/Closed Principle: extend functionality without modifying existing code.
+     *
+     * @param array $results Search results.
+     * @param array $filters Array of KISS_Woo_Order_Filter instances.
+     * @return array Filtered results.
+     */
+    private function apply_filters_to_results( array $results, array $filters ): array {
+        foreach ( $filters as $filter ) {
+            if ( $filter instanceof KISS_Woo_Order_Filter ) {
+                $results = $filter->apply( $results );
+            }
+        }
 
         return $results;
     }
@@ -201,7 +234,7 @@ class KISS_Woo_COS_Search {
      *
      * @return int[]
      */
-    protected function search_user_ids_via_customer_lookup( $term, $limit = 20 ) {
+    protected function search_user_ids_via_customer_lookup( $term, $limit = 40 ) {
         global $wpdb;
 
         $this->last_lookup_debug = array(
@@ -225,8 +258,10 @@ class KISS_Woo_COS_Search {
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         if ( $exists !== $table ) {
             $this->last_lookup_debug['enabled'] = false;
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
+            if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
+            }
             return array();
         }
 
@@ -265,15 +300,19 @@ class KISS_Woo_COS_Search {
                 $sql = $wpdb->remove_placeholder_escape( $sql );
             }
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+            if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+            }
 
             $t_start = microtime( true );
             $ids = $wpdb->get_col( $sql );
             $t_elapsed = round( ( microtime( true ) - $t_start ) * 1000, 2 );
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+            if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+            }
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
@@ -407,16 +446,20 @@ class KISS_Woo_COS_Search {
 
         $t_counts_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         try {
             if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
                 $counts = $this->get_order_counts_hpos( $user_ids );
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+                if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+                    // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                    error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+                }
                 return $counts + $order_counts;
             }
         } catch ( Exception $e ) {
@@ -425,8 +468,10 @@ class KISS_Woo_COS_Search {
 
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         return $legacy_counts + $order_counts;
     }
@@ -1019,12 +1064,14 @@ class KISS_Woo_COS_Search {
 
         $t_orders_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
-        // Instead, fetch matching order IDs with a direct legacy SQL query (IN list),
+        // Instead, fetch matching order IDs with a direct SQL query (IN list),
         // then hydrate those orders in one go.
 
         $statuses = array_keys( wc_get_order_statuses() );
@@ -1036,29 +1083,50 @@ class KISS_Woo_COS_Search {
         // (Worst case: many recent orders belong to one customer.)
         $candidate_limit = count( $user_ids ) * 10 * 5;
 
+        // Detect HPOS to use correct table structure.
+        $use_hpos = KISS_Woo_Utils::is_hpos_enabled();
+
         $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
         $user_placeholders   = implode( ',', array_fill( 0, count( $user_ids ), '%s' ) );
 
-        $sql = $wpdb->prepare(
-            "SELECT p.ID AS order_id, pm.meta_value AS customer_id
-             FROM {$wpdb->posts} p
-             INNER JOIN {$wpdb->postmeta} pm
-                ON p.ID = pm.post_id
-               AND pm.meta_key = '_customer_user'
-             WHERE p.post_type = 'shop_order'
-               AND p.post_status IN ({$status_placeholders})
-               AND pm.meta_value IN ({$user_placeholders})
-             ORDER BY p.post_date_gmt DESC
-             LIMIT %d",
-            array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
-        );
+        if ( $use_hpos ) {
+            // HPOS: Query wc_orders table.
+            $orders_table = $wpdb->prefix . 'wc_orders';
+            $sql = $wpdb->prepare(
+                "SELECT id AS order_id, customer_id
+                 FROM {$orders_table}
+                 WHERE type = 'shop_order'
+                   AND status IN ({$status_placeholders})
+                   AND customer_id IN ({$user_placeholders})
+                 ORDER BY date_created_gmt DESC
+                 LIMIT %d",
+                array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
+            );
+        } else {
+            // Legacy: Query wp_posts and wp_postmeta.
+            $sql = $wpdb->prepare(
+                "SELECT p.ID AS order_id, pm.meta_value AS customer_id
+                 FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm
+                    ON p.ID = pm.post_id
+                   AND pm.meta_key = '_customer_user'
+                 WHERE p.post_type = 'shop_order'
+                   AND p.post_status IN ({$status_placeholders})
+                   AND pm.meta_value IN ({$user_placeholders})
+                 ORDER BY p.post_date_gmt DESC
+                 LIMIT %d",
+                array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
+            );
+        }
 
         $t_sql_start = microtime( true );
         $rows = $wpdb->get_results( $sql );
         $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] get_recent_orders SQL done (' . ( $use_hpos ? 'HPOS' : 'legacy' ) . ') - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         if ( empty( $rows ) ) {
             return $results;
@@ -1091,8 +1159,10 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         // IMPORTANT: Avoid wc_get_orders() - it triggers expensive hooks/plugins on large sites.
         // Use direct SQL to fetch only the fields we need for display.
@@ -1100,8 +1170,10 @@ class KISS_Woo_COS_Search {
         $order_data = $this->get_order_data_via_sql( $all_order_ids );
         $t_hydrate_elapsed = round( ( microtime( true ) - $t_hydrate_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        if ( defined( 'KISS_WOO_FAST_SEARCH_DEBUG' ) && KISS_WOO_FAST_SEARCH_DEBUG ) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        }
 
         if ( empty( $order_data ) ) {
             return $results;
@@ -1555,7 +1627,7 @@ class KISS_Woo_COS_Search {
 
         $orders = wc_get_orders(
             array(
-                'limit'         => 20,
+                'limit'         => 40,
                 'orderby'       => 'date',
                 'order'         => 'DESC',
                 'status'        => array_keys( wc_get_order_statuses() ),

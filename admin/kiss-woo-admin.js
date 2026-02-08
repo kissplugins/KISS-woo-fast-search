@@ -317,7 +317,8 @@ jQuery(function ($) {
                 action: 'kiss_woo_customer_search',
                 nonce: KISSCOS.nonce,
                 q: q,
-                scope: scope
+                scope: scope,
+                wholesale_only: (KISSCOS.wholesale_only ? '1' : '0')
             }
         }).done(function (resp) {
             // Debug: Log the full response
@@ -386,5 +387,217 @@ jQuery(function ($) {
     if (initialQ.length >= 2) {
         $input.val(initialQ);
         $form.trigger('submit');
+    }
+
+    // ========================================================================
+    // Wholesale Listing Feature (v1.2.5)
+    // ========================================================================
+
+    /**
+     * Load orders with pagination (generic function for wholesale, recent, etc.).
+     *
+     * @param {string} listType - Type of listing ('wholesale' or 'recent')
+     * @param {number} page - Page number (1-based)
+     * @param {number} perPage - Orders per page
+     */
+    function loadOrderList(listType, page, perPage) {
+        page = page || 1;
+        perPage = perPage || 100;
+
+        var config = {
+            wholesale: {
+                action: 'kiss_woo_list_wholesale_orders',
+                loadingMsg: KISSCOS.i18n.listing || 'Loading wholesale orders...',
+                title: KISSCOS.i18n.wholesale_title || 'Wholesale Orders',
+                noResultsMsg: KISSCOS.i18n.no_wholesale || 'No wholesale orders found.',
+                countLabel: 'wholesale orders'
+            },
+            recent: {
+                action: 'kiss_woo_list_recent_orders',
+                loadingMsg: KISSCOS.i18n.listing_recent || 'Loading recent orders...',
+                title: KISSCOS.i18n.recent_title || 'Most Recent 50 Orders',
+                noResultsMsg: KISSCOS.i18n.no_recent || 'No recent orders found.',
+                countLabel: 'orders'
+            }
+        };
+
+        var settings = config[listType];
+        if (!settings) {
+            console.error('Unknown list type:', listType);
+            return;
+        }
+
+        $status.text(settings.loadingMsg);
+        $results.html('');
+
+        $.ajax({
+            url: KISSCOS.ajax_url,
+            method: 'POST',
+            data: {
+                action: settings.action,
+                nonce: KISSCOS.nonce,
+                page: page,
+                per_page: perPage
+            }
+        }).done(function (resp) {
+            if (KISSCOS.debug) {
+                console.log(listType + ' Listing Response:', resp);
+            }
+
+            if (!resp.success || !resp.data) {
+                $results.html('<div class="notice notice-error"><p>' + escapeHtml(resp.data && resp.data.message || 'Unknown error') + '</p></div>');
+                return;
+            }
+
+            var data = resp.data;
+            var orders = data.orders || [];
+            var total = data.total || 0;
+            var pages = data.pages || 1;
+            var currentPage = data.current_page || 1;
+            var elapsedMs = data.elapsed_ms || 0;
+
+            // Update search time display
+            if ($searchTime.length) {
+                $searchTime.html('Found <strong>' + total + '</strong> ' + settings.countLabel + ' in <strong>' + elapsedMs + 'ms</strong>');
+            }
+
+            if (orders.length === 0) {
+                $results.html('<div class="notice notice-info"><p>' + settings.noResultsMsg + '</p></div>');
+                return;
+            }
+
+            // Render orders
+            var html = '<div class="kiss-cos-wholesale-listing">';
+            html += '<h3>' + settings.title + '</h3>';
+            html += '<div class="kiss-cos-order-list">';
+
+            orders.forEach(function(order) {
+                html += '<div class="kiss-cos-order-item">';
+                html += '<div class="kiss-cos-order-header">';
+                html += '<strong>Order #' + escapeHtml(order.id) + '</strong> ';
+                html += '<span class="kiss-cos-order-status status-' + escapeHtml(order.status) + '">' + escapeHtml(order.status_label || order.status) + '</span>';
+                html += '</div>';
+                html += '<div class="kiss-cos-order-details">';
+                if (order.customer && order.customer.name) {
+                    html += '<div><strong>Customer:</strong> ' + escapeHtml(order.customer.name) + '</div>';
+                }
+                if (order.customer && order.customer.email) {
+                    html += '<div><strong>Email:</strong> ' + escapeHtml(order.customer.email) + '</div>';
+                }
+                html += '<div><strong>Total:</strong> ' + escapeHtml(order.total_display || order.total || 'N/A') + '</div>';
+                html += '<div><strong>Date:</strong> ' + escapeHtml(order.date_display || order.date_created || 'N/A') + '</div>';
+                html += '</div>';
+                html += '<div class="kiss-cos-order-actions">';
+                html += '<a href="' + escapeHtml(order.view_url) + '" class="button button-small">View Order</a>';
+                html += '</div>';
+                html += '</div>';
+            });
+
+            html += '</div>'; // .kiss-cos-order-list
+
+            // Add pagination controls
+            if (pages > 1) {
+                html += renderPagination(currentPage, pages, perPage, listType);
+            }
+
+            html += '</div>'; // .kiss-cos-wholesale-listing
+
+            $results.html(html);
+
+            // Attach pagination click handlers
+            $('.kiss-cos-pagination-btn').on('click', function(e) {
+                e.preventDefault();
+                var targetPage = parseInt($(this).data('page'), 10);
+                if (targetPage >= 1 && targetPage <= pages) {
+                    loadWholesaleOrders(targetPage, perPage);
+                    // Scroll to top of results
+                    $('html, body').animate({ scrollTop: $results.offset().top - 50 }, 300);
+                }
+            });
+
+        }).fail(function (xhr, status, error) {
+            var errorHtml = '<div class="notice notice-error">';
+            errorHtml += '<p><strong>Error loading wholesale orders:</strong></p>';
+            errorHtml += '<p>' + escapeHtml(error || 'Unknown error') + '</p>';
+            errorHtml += '</div>';
+            $results.html(errorHtml);
+        }).always(function () {
+            $status.text('');
+        });
+    }
+
+    /**
+     * Render pagination controls.
+     *
+     * @param {number} currentPage - Current page number
+     * @param {number} totalPages - Total number of pages
+     * @param {number} perPage - Orders per page
+     * @param {string} listType - Type of listing ('wholesale' or 'recent')
+     * @return {string} HTML for pagination controls
+     */
+    function renderPagination(currentPage, totalPages, perPage, listType) {
+        var html = '<div class="kiss-cos-pagination" data-list-type="' + escapeHtml(listType) + '" data-per-page="' + perPage + '">';
+
+        // Previous button
+        if (currentPage > 1) {
+            html += '<button class="button kiss-cos-pagination-btn" data-page="' + (currentPage - 1) + '">&laquo; Previous</button>';
+        } else {
+            html += '<button class="button" disabled>&laquo; Previous</button>';
+        }
+
+        // Page numbers (show max 7 pages with ellipsis)
+        var startPage = Math.max(1, currentPage - 3);
+        var endPage = Math.min(totalPages, currentPage + 3);
+
+        if (startPage > 1) {
+            html += '<button class="button kiss-cos-pagination-btn" data-page="1">1</button>';
+            if (startPage > 2) {
+                html += '<span class="kiss-cos-pagination-ellipsis">...</span>';
+            }
+        }
+
+        for (var i = startPage; i <= endPage; i++) {
+            if (i === currentPage) {
+                html += '<button class="button button-primary" disabled>' + i + '</button>';
+            } else {
+                html += '<button class="button kiss-cos-pagination-btn" data-page="' + i + '">' + i + '</button>';
+            }
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                html += '<span class="kiss-cos-pagination-ellipsis">...</span>';
+            }
+            html += '<button class="button kiss-cos-pagination-btn" data-page="' + totalPages + '">' + totalPages + '</button>';
+        }
+
+        // Next button
+        if (currentPage < totalPages) {
+            html += '<button class="button kiss-cos-pagination-btn" data-page="' + (currentPage + 1) + '">Next &raquo;</button>';
+        } else {
+            html += '<button class="button" disabled>Next &raquo;</button>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    // Handle pagination button clicks (delegated event handler)
+    $results.on('click', '.kiss-cos-pagination-btn', function() {
+        var page = parseInt($(this).attr('data-page'), 10);
+        var $pagination = $(this).closest('.kiss-cos-pagination');
+        var listType = $pagination.attr('data-list-type');
+        var perPage = parseInt($pagination.attr('data-per-page'), 10) || 100;
+
+        if (listType && page) {
+            loadOrderList(listType, page, perPage);
+        }
+    });
+
+    // Auto-trigger listing based on URL parameters
+    if (KISSCOS.list_wholesale) {
+        loadOrderList('wholesale', 1, 100);
+    } else if (KISSCOS.list_recent) {
+        loadOrderList('recent', 1, 100);
     }
 });
