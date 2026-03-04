@@ -52,20 +52,21 @@ class KISS_Woo_Coupon_Search {
         $table = $lookup->get_table_name();
         $blog_id = (int) get_current_blog_id();
 
-        $normalized_code = $this->normalize_code( $term );
+        $normalized_code = KISS_Woo_Coupon_Lookup::normalize_code( $term );
         if ( '' === $normalized_code ) {
             $normalized_code = '__kiss_none__';
         }
 
-        $normalized_text = $this->normalize_text( $term );
+        $normalized_text = KISS_Woo_Coupon_Lookup::normalize_text( $term );
         if ( '' === $normalized_text ) {
             $normalized_text = strtolower( $term );
         }
 
-        $term_like = '%' . $wpdb->esc_like( $term ) . '%';
-        $term_prefix = $wpdb->esc_like( $term ) . '%';
+        // Prepare search term for FULLTEXT search (BOOLEAN MODE).
+        // Strip FULLTEXT boolean operators to prevent query manipulation,
+        // then add wildcard for prefix matching: "summer*" matches "summer", "summer2024", etc.
+        $fulltext_term = preg_replace( '/[+\-~<>()\"@]/', '', $term ) . '*';
         $code_prefix = $wpdb->esc_like( $normalized_code ) . '%';
-        $desc_like = '%' . $wpdb->esc_like( $normalized_text ) . '%';
 
         $sql = $wpdb->prepare(
             "SELECT coupon_id, code, title, description, amount, discount_type, expiry_date, usage_limit,
@@ -74,29 +75,19 @@ class KISS_Woo_Coupon_Search {
                         WHEN code_normalized = %s THEN 100
                         WHEN code_normalized LIKE %s THEN 90
                         WHEN title = %s THEN 70
-                        WHEN title LIKE %s THEN 60
-                        WHEN description_normalized LIKE %s THEN 40
                         ELSE 10
                     END AS score
                FROM {$table}
               WHERE blog_id = %d
                 AND status NOT IN ('trash', 'auto-draft')
-                AND (
-                    code_normalized LIKE %s
-                    OR title LIKE %s
-                    OR description_normalized LIKE %s
-                )
+                AND MATCH(code_normalized, title, description_normalized) AGAINST(%s IN BOOLEAN MODE)
            ORDER BY score DESC, updated_at DESC
               LIMIT %d",
             $normalized_code,
             $code_prefix,
             $term,
-            $term_prefix,
-            $desc_like,
             $blog_id,
-            $code_prefix,
-            $term_like,
-            $desc_like,
+            $fulltext_term,
             $limit
         );
 
@@ -210,31 +201,5 @@ class KISS_Woo_Coupon_Search {
         }
     }
 
-    /**
-     * Normalize coupon code for indexed search.
-     *
-     * @param string $code Coupon code.
-     * @return string
-     */
-    private function normalize_code( string $code ): string {
-        $code = strtolower( trim( $code ) );
-        $code = preg_replace( '/[^a-z0-9]+/', '', $code );
-
-        return $code;
-    }
-
-    /**
-     * Normalize general text for indexed search.
-     *
-     * @param string $text Raw text.
-     * @return string
-     */
-    private function normalize_text( string $text ): string {
-        $text = wp_strip_all_tags( $text );
-        $text = strtolower( trim( $text ) );
-        $text = preg_replace( '/\\s+/', ' ', $text );
-
-        return $text;
-    }
 }
 
