@@ -19,7 +19,7 @@ class KISS_Woo_Coupon_Lookup {
      *
      * @var string
      */
-    private const DB_VERSION = '1.0';
+    private const DB_VERSION = '1.1';
 
     /**
      * Option name that stores the schema version.
@@ -292,10 +292,10 @@ class KISS_Woo_Coupon_Lookup {
             'coupon_id'             => $coupon_id,
             'blog_id'               => (int) get_current_blog_id(),
             'code'                  => $code,
-            'code_normalized'       => $this->normalize_code( $code ),
+            'code_normalized'       => self::normalize_code( $code ),
             'title'                 => $title,
             'description'           => $desc,
-            'description_normalized'=> $this->normalize_text( $desc ),
+            'description_normalized'=> self::normalize_text( $desc ),
             'amount'                => (float) $coupon->get_amount(),
             'discount_type'         => (string) $coupon->get_discount_type(),
             'expiry_date'           => $expires ? $expires->date( 'Y-m-d H:i:s' ) : null,
@@ -360,7 +360,7 @@ class KISS_Woo_Coupon_Lookup {
      * @param string $code Coupon code.
      * @return string
      */
-    private function normalize_code( string $code ): string {
+    public static function normalize_code( string $code ): string {
         $code = strtolower( trim( $code ) );
         $code = preg_replace( '/[^a-z0-9]+/', '', $code );
 
@@ -373,7 +373,7 @@ class KISS_Woo_Coupon_Lookup {
      * @param string $text Raw text.
      * @return string
      */
-    private function normalize_text( string $text ): string {
+    public static function normalize_text( string $text ): string {
         $text = wp_strip_all_tags( $text );
         $text = strtolower( trim( $text ) );
         $text = preg_replace( '/\\s+/', ' ', $text );
@@ -457,7 +457,8 @@ class KISS_Woo_Coupon_Lookup {
             KEY idx_code_normalized (code_normalized),
             KEY idx_title (title),
             KEY idx_expiry (expiry_date),
-            KEY idx_blog_id (blog_id)
+            KEY idx_blog_id (blog_id),
+            FULLTEXT KEY idx_search_fulltext (code_normalized, title, description_normalized)
         ) {$charset_collate};";
     }
 }
