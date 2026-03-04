@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.14] - 2026-03-04
+
+### Changed
+- **Merged feature/add-coupon-search into development**: Integrated WP CLI table lookup functionality and coupon search improvements
+  - Resolved merge conflicts between development (newer, Feb 7) and feature branch (Jan 28)
+  - Consolidated debug logging to use `KISS_Woo_Debug_Tracer::log()` throughout (removed conditional error_log calls)
+  - Maintained all wholesale search features and security fixes from development branch
+  - Preserved coupon lookup builder and admin UI features from feature branch
+  - Version bumped to 1.2.14 to reflect merge
+
+### Technical Details
+- Merged branches: `feature/add-coupon-search` → `development`
+- Conflicts resolved in:
+  - `CHANGELOG.md` - Combined changelog entries from both branches
+  - `includes/class-kiss-woo-search.php` - Unified debug logging approach
+  - `kiss-woo-fast-order-search.php` - Updated version to 1.2.14
+- All debug logging now uses centralized `KISS_Woo_Debug_Tracer` (no more direct error_log calls)
+- Maintained backward compatibility with both branches' features
+
+---
+
 ## [1.2.13] - 2026-02-04
 
 ### Fixed
