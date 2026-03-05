@@ -181,7 +181,7 @@ function kiss_woo_render_coupon_diagnostic() {
         <form method="post">
             <?php wp_nonce_field( 'kiss_woo_backfill_single' ); ?>
             <p>
-                <input type="text" name="coupon_code" placeholder="Enter coupon code" value="r1m8jj1xt2m1m" style="width: 300px;">
+                <input type="text" name="coupon_code" placeholder="Enter coupon code" value="" style="width: 300px;">
                 <button type="submit" name="backfill_single" class="button">Backfill This Coupon</button>
             </p>
         </form>

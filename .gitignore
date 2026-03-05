@@ -1,4 +1,6 @@
 temp.php
+debug-*.php
+test-*.php
 .DS_Store
 
 # Composer

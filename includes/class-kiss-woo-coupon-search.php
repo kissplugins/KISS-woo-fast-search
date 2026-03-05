@@ -120,9 +120,13 @@ class KISS_Woo_Coupon_Search {
     }
 
     /**
-     * Fallback search: Query wp_posts directly when lookup table has no results.
+     * Fallback search: Query wp_posts + wp_postmeta directly when lookup table has no results.
      * This handles cases where coupons haven't been backfilled yet.
      *
+     * Uses 2 batch queries (posts + postmeta) instead of N+1 WC_Coupon loads,
+     * then feeds rows through the existing format_from_row() formatter.
+     *
+     * @since 1.2.15
      * @param string $term Search term.
      * @param int    $limit Max results.
      * @return array
@@ -132,9 +136,9 @@ class KISS_Woo_Coupon_Search {
 
         $term_like = '%' . $wpdb->esc_like( $term ) . '%';
 
-        // Search wp_posts for shop_coupon post type
+        // Query 1: Fetch matching coupon posts with core fields in a single query.
         $sql = $wpdb->prepare(
-            "SELECT ID
+            "SELECT ID, post_title, post_excerpt, post_status
                FROM {$wpdb->posts}
               WHERE post_type = 'shop_coupon'
                 AND post_status NOT IN ('trash', 'auto-draft')
@@ -145,28 +149,78 @@ class KISS_Woo_Coupon_Search {
             $limit
         );
 
-        $coupon_ids = $wpdb->get_col( $sql );
+        $posts = $wpdb->get_results( $sql );
 
-        if ( empty( $coupon_ids ) ) {
+        if ( empty( $posts ) ) {
             return array();
         }
 
-        // Load WC_Coupon objects and format them
+        // Build ID list for batch meta query.
+        $coupon_ids   = wp_list_pluck( $posts, 'ID' );
+        $id_count     = count( $coupon_ids );
+        $placeholders = implode( ',', array_fill( 0, $id_count, '%d' ) );
+
+        // Query 2: Batch-fetch all needed postmeta in one query.
+        $meta_keys = array(
+            'discount_type',
+            'coupon_amount',
+            'date_expires',
+            'usage_limit',
+            'usage_limit_per_user',
+            'usage_count',
+            'free_shipping',
+        );
+        $key_count       = count( $meta_keys );
+        $key_placeholders = implode( ',', array_fill( 0, $key_count, '%s' ) );
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders are safe.
+        $meta_sql = $wpdb->prepare(
+            "SELECT post_id, meta_key, meta_value
+               FROM {$wpdb->postmeta}
+              WHERE post_id IN ({$placeholders})
+                AND meta_key IN ({$key_placeholders})",
+            array_merge( $coupon_ids, $meta_keys )
+        );
+
+        $meta_rows = $wpdb->get_results( $meta_sql );
+
+        // Index meta by post_id for O(1) lookups.
+        $meta_map = array();
+        if ( ! empty( $meta_rows ) ) {
+            foreach ( $meta_rows as $m ) {
+                $meta_map[ (int) $m->post_id ][ $m->meta_key ] = $m->meta_value;
+            }
+        }
+
+        // Build rows matching format_from_row() contract, then format.
         $results = array();
-        foreach ( $coupon_ids as $coupon_id ) {
-            if ( ! class_exists( 'WC_Coupon' ) ) {
-                break;
+        foreach ( $posts as $post ) {
+            $pid  = (int) $post->ID;
+            $meta = isset( $meta_map[ $pid ] ) ? $meta_map[ $pid ] : array();
+
+            // Convert date_expires timestamp to datetime string.
+            $expiry_date = '';
+            if ( ! empty( $meta['date_expires'] ) ) {
+                $expiry_date = gmdate( 'Y-m-d H:i:s', (int) $meta['date_expires'] );
             }
 
-            try {
-                $coupon = new WC_Coupon( $coupon_id );
-                if ( $coupon && $coupon->get_id() ) {
-                    $results[] = KISS_Woo_Coupon_Formatter::format_from_coupon( $coupon );
-                }
-            } catch ( Exception $e ) {
-                // Skip invalid coupons
-                continue;
-            }
+            $row = array(
+                'coupon_id'          => $pid,
+                'code'               => $post->post_title,
+                'title'              => $post->post_title,
+                'description'        => $post->post_excerpt,
+                'discount_type'      => isset( $meta['discount_type'] ) ? $meta['discount_type'] : '',
+                'amount'             => isset( $meta['coupon_amount'] ) ? (float) $meta['coupon_amount'] : 0.0,
+                'expiry_date'        => $expiry_date,
+                'usage_limit'        => isset( $meta['usage_limit'] ) ? (int) $meta['usage_limit'] : 0,
+                'usage_limit_per_user' => isset( $meta['usage_limit_per_user'] ) ? (int) $meta['usage_limit_per_user'] : 0,
+                'usage_count'        => isset( $meta['usage_count'] ) ? (int) $meta['usage_count'] : 0,
+                'free_shipping'      => ! empty( $meta['free_shipping'] ) && 'yes' === $meta['free_shipping'] ? 1 : 0,
+                'status'             => $post->post_status,
+                'source_flags'       => 'fallback',
+            );
+
+            $results[] = KISS_Woo_Coupon_Formatter::format_from_row( $row );
         }
 
         return $results;

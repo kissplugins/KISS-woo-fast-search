@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.16] - 2026-03-05
+
+### Removed
+- **Deleted developer debug scratch files** from repository:
+  - `debug-coupon-search.php` — contained hardcoded local path (`/Users/noelsaw/...`) and test coupon code
+  - `test-coupon-upsert.php` — contained hardcoded coupon ID `1323821`
+- Added `debug-*.php` and `test-*.php` patterns to `.gitignore` to prevent future commits
+
+### Fixed
+- **Cleared hardcoded test coupon code** in `admin/coupon-diagnostic.php` — replaced pre-filled `r1m8jj1xt2m1m` value with empty default in the "Test Single Coupon" form field
+
+---
+
+## [1.2.15] - 2026-03-05
+
+### Fixed
+- **Performance: Eliminated N+1 query in coupon fallback search** (Finding #3 from audit)
+  - Replaced per-coupon `new WC_Coupon()` loop with 2 batch SQL queries (posts + postmeta)
+  - Now reuses existing `KISS_Woo_Coupon_Formatter::format_from_row()` instead of `format_from_coupon()`
+  - Reduces fallback search from N+2 queries to exactly 2 queries regardless of result count
+  - **File Modified**: `includes/class-kiss-woo-coupon-search.php` — `fallback_search()` method rewritten
+
+---
+
 ## [1.2.14] - 2026-03-04
 
 ### Changed
