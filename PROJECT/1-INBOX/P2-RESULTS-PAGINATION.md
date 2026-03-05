@@ -1,3 +1,18 @@
+# Results Pagination & Client-Side Filtering
+
+## 📋 Triage Status — 2026-03-05
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Wholesale listing pagination | ✅ DONE | `KISS_Woo_Order_Query::query_orders()` returns `total`/`pages`; AJAX handler uses `$page`/`$per_page` |
+| All-orders listing pagination | ✅ DONE | Same `query_orders()` path |
+| Client-side secondary filter | ❌ NOT STARTED | Would filter the current result set in JS without a new AJAX call |
+| "Show More Results" button (Tier 2) | ❌ NOT STARTED | Would increase limit and re-fetch with same search term |
+
+**Overall Status:** 🟡 PARTIALLY DONE — Server-side pagination is implemented. Client-side filtering and "Show More" UX remain unbuilt. These are P2 nice-to-haves; the system is fully functional without them.
+
+---
+
 Great thinking! Let me analyze the current system and propose a tiered approach:
 
 Perfect! I can see the current limits. Let me propose a tiered solution:

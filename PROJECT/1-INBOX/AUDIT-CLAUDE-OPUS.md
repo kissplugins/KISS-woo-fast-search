@@ -1,3 +1,16 @@
+## 📋 Triage Status — 2026-03-05
+
+| Finding | Status | Version Fixed |
+|---------|--------|---------------|
+| SQL injection / escaping audit | ✅ Already correct at time of review | — |
+| Debug logging enabled by default | ✅ DONE — defaults to `false` via `apply_filters('kiss_woo_debug_enabled', false)` | v1.1.5 |
+| Benchmark page lacks nonce | ✅ DONE — `wp_verify_nonce()` + `wp_nonce_field()` present in `admin/class-kiss-woo-admin-page.php` lines 193, 207 | pre-v1.2 |
+| Index hints for `wc_customer_lookup` | 🟡 BACKLOG — "consider if slow query logs appear"; not a blocker | — |
+
+**Overall Status:** ✅ All actionable items resolved. Only remaining item is a low-priority optional optimization (index hints), which should only be pursued if slow query logs appear on 100k+ customer sites.
+
+---
+
 **STATUS:** PARTIALLY COMPLETED - SEE BELOW
 
 ## Security Issues
@@ -81,7 +94,7 @@ protected function is_debug_enabled() {
     return false; // Changed from true
 }
 ```
-**STATUS:** Not started
+**STATUS:** ✅ DONE — `apply_filters( 'kiss_woo_debug_enabled', false )` defaults to `false`
 
 2. **Add nonce to benchmark page:**
 ```php
@@ -93,12 +106,12 @@ public function render_benchmark_page() {
 }
 ```
 
-**STATUS:** Not started
+**STATUS:** ✅ DONE — `wp_verify_nonce()` on GET, `wp_nonce_field()` on form (`admin/class-kiss-woo-admin-page.php` lines 193, 207)
 
 
 3. **Consider adding index hints** for the `wc_customer_lookup` queries if you see slow query logs on sites with 100k+ customers.
 
-**STATUS:** Not started
+**STATUS:** 🟡 BACKLOG — Optional. Only pursue if slow query logs appear on large sites.
 
 
 ---

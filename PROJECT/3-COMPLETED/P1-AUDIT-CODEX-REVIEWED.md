@@ -256,13 +256,13 @@ AGAINST('summer*' IN BOOLEAN MODE);
 
 ---
 
-## Finding #3: Fallback search does LIKE %term% + N+1 WC_Coupon loads ✅ MITIGATED in v1.2.6
+## Finding #3: Fallback search does LIKE %term% + N+1 WC_Coupon loads ✅ FULLY FIXED in v1.2.15 (previously MITIGATED in v1.2.6)
 
 **Location:** `class-kiss-woo-coupon-search.php` (lines 145-179)
 
 **Severity:** 🔴 **HIGH** (Performance)
 
-**Status:** ✅ **MITIGATED** in v1.2.6 (2026-01-28) - Admin UI button for batch building lookup table
+**Status:** ✅ **FULLY FIXED** in v1.2.15 — Batch SQL (2 queries: posts + postmeta) replaces all `WC_Coupon` loads. Previously MITIGATED in v1.2.6 via admin UI button for proactive backfill.
 
 **Issue:**
 ```php
@@ -410,7 +410,7 @@ foreach ( $coupon_ids as $coupon_id ) {
 |---------|----------|--------|-------------|--------|------|--------------|
 | #1 - Unconditional error_log | Medium | ✅ **FIXED** | v1.2.8 | 🟢 Low (1-2h) | 🟢 Very Low | Replaced with debug tracer |
 | #2 - Infix LIKE scans (2/3 conditions) | 🔴 **HIGH** | ✅ **FIXED** | v1.2.7 | 🟡 Med (3-5h) | 🟢 Low | FULLTEXT index with BOOLEAN MODE |
-| #3 - Fallback N+1 queries | High | ✅ **MITIGATED** | v1.2.6 | N/A | N/A | Admin UI button for batch building lookup table |
+| #3 - Fallback N+1 queries | High | ✅ **FIXED** | v1.2.15 | N/A | N/A | Batch SQL (2 queries) replaces N+1 `WC_Coupon` loads; admin UI button added in v1.2.6 |
 
 ---
 
@@ -430,12 +430,11 @@ foreach ( $coupon_ids as $coupon_id ) {
    - Logs counts instead of actual user IDs
    - All 38 tests passing
 
-3. ✅ **MITIGATED #3** (v1.2.6) - Fallback N+1 queries:
-   - Admin UI button for batch building lookup table
-   - WP-CLI command for batch building
-   - Shared batch processor architecture
-   - Real-time progress tracking with auto-polling
-   - Fallback now rare (only on fresh installs before first build)
+3. ✅ **FIXED #3** (v1.2.15) - Fallback N+1 queries:
+   - Rewrote `fallback_search()` to use 2 batch SQL queries (posts + postmeta)
+   - No more `WC_Coupon` object loads in a loop
+   - Reuses existing `format_from_row()` formatter
+   - Admin UI button for proactive backfill added in v1.2.6
 
 ### 🎉 Status: PRODUCTION READY
 
@@ -444,7 +443,7 @@ foreach ( $coupon_ids as $coupon_id ) {
 - ✅ Finding #2: FIXED in v1.2.7
 - ✅ Finding #3: MITIGATED in v1.2.6
 
-**Current Version:** v1.2.8
+**Current Version:** v1.2.16
 
 **Deployment Checklist:**
 1. ✅ All 38 PHPUnit tests passing

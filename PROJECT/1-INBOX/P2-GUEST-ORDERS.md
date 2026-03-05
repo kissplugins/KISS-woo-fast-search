@@ -1,7 +1,16 @@
 # Guest vs Customer Orders - Logic Analysis
-**Date:** 2026-01-06  
+**Date:** 2026-01-06
 **Issue:** Potential filtering gap in order display logic
-**Status:** Open - Not Completed
+
+## 📋 Triage Status — 2026-03-05
+
+| Scenario | Status |
+|----------|--------|
+| Registered customer with multiple emails | ✅ Handled correctly by `wc_customer_lookup` email index |
+| Guest order → account creation | ✅ Works correctly (shown in two sections) |
+| Order reassignment (billing email ≠ account email) | ❌ NOT FIXED — order becomes invisible in search results |
+
+**Overall Status:** ❌ NOT STARTED — Scenario 3 gap is unresolved. Recommended fix is Option 3 (deduplication in AJAX handler). P2 priority.
 
 ---
 
