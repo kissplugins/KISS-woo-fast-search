@@ -1,15 +1,32 @@
 /**
  * KISS Woo Fast Order Search - Toolbar Styles
- * Extracted from inline styles in toolbar.php
+ *
+ * Z-index stacking context (WP defaults for reference):
+ *   #wpadminbar       = 99999
+ *   .media-modal       = 160000
+ *   .wp-full-overlay   = 500000
+ *
+ * Our toolbar sits BELOW the WP admin bar (#wpadminbar) but ABOVE
+ * the rest of the admin content. We use a fixed position immediately
+ * below the admin bar (32px on desktop, 46px on mobile).
+ *
+ * Height: 36px (our toolbar)
+ * WP admin bar height: 32px desktop / 46px mobile
  */
+
+:root {
+    --kiss-toolbar-height: 36px;
+    --kiss-wp-admin-bar-height: 32px;
+    --kiss-combined-offset: calc(var(--kiss-wp-admin-bar-height) + var(--kiss-toolbar-height));
+}
 
 #floating-search-toolbar {
     position: fixed;
-    top: 32px; /* Directly below WP admin bar */
+    top: var(--kiss-wp-admin-bar-height); /* Directly below WP admin bar */
     left: 0;
     right: 0;
-    z-index: 9997;
-    height: 32px;
+    z-index: 99998; /* Just below #wpadminbar (99999) */
+    height: var(--kiss-toolbar-height);
     background: #1d2327; /* Match WP admin bar */
     border-bottom: 1px solid #333;
     display: flex;
@@ -18,25 +35,46 @@
     box-sizing: border-box;
 }
 
-/* Adjust for smaller admin bar on mobile */
+/* ----------------------------------------------------------------
+   Push admin content down by our toolbar height.
+
+   The WP admin already offsets content for #wpadminbar (32px).
+   We add our toolbar height on top of that.
+
+   #wpcontent and #adminmenuwrap are the main content containers
+   in wp-admin. We push them down with additional margin-top.
+   ---------------------------------------------------------------- */
+
+/* Push main content area down by our toolbar height.
+   Scoped under body.kiss-toolbar-active (added server-side via
+   admin_body_class filter) so we have a kill-switch if conflicts arise. */
+body.kiss-toolbar-active #wpcontent {
+    margin-top: var(--kiss-toolbar-height) !important;
+}
+
+/* Left admin menu: push the entire menu down so it doesn't
+   tuck behind our toolbar */
+body.kiss-toolbar-active #adminmenuwrap {
+    margin-top: var(--kiss-toolbar-height) !important;
+}
+
+/* ----------------------------------------------------------------
+   Mobile: WP admin bar is 46px on < 783px
+   ---------------------------------------------------------------- */
 @media screen and (max-width: 782px) {
+    :root {
+        --kiss-wp-admin-bar-height: 46px;
+        --kiss-toolbar-height: 46px;
+    }
+
     #floating-search-toolbar {
-        top: 46px;
-        height: 46px;
+        top: 46px; /* explicit fallback for browsers without var() in top */
     }
 }
 
-/* Push admin content down to accommodate toolbar */
-.floating-toolbar-active #wpcontent,
-.floating-toolbar-active #wpfooter {
-    margin-top: 32px;
-}
-
-@media screen and (max-width: 782px) {
-    .floating-toolbar-active #wpcontent,
-    .floating-toolbar-active #wpfooter {
-        margin-top: 46px;
-    }
+/* When WP admin bar is hidden (e.g. full-screen Gutenberg) */
+body.is-fullscreen-mode #floating-search-toolbar {
+    top: 0;
 }
 
 /* Toolbar layout */
@@ -179,7 +217,7 @@
     color: rgb(240, 240, 241);
     cursor: pointer;
     font-size: 13px;
-    height: 32px;
+    height: var(--kiss-toolbar-height);
     padding: 0 12px;
     display: flex;
     align-items: center;
@@ -250,7 +288,7 @@
     color:rgb(240, 240, 241);
     cursor: pointer;
     font-size: 13px;
-    height: 32px;
+    height: var(--kiss-toolbar-height);
     padding: 0 12px;
     transition: background 0.1s ease-in-out, color 0.1s ease-in-out;
 }
