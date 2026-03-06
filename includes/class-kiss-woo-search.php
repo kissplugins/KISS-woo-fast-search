@@ -13,46 +13,6 @@ class KISS_Woo_COS_Search {
     protected $last_lookup_debug = array();
 
     /**
-     * Whether debug logging is enabled.
-     *
-     * Default: disabled. Enable by defining `KISS_WOO_COS_DEBUG` as true.
-     *
-     * @return bool
-     */
-    protected function is_debug_enabled() {
-        if ( defined( 'KISS_WOO_COS_DEBUG' ) ) {
-            return (bool) KISS_WOO_COS_DEBUG;
-        }
-
-        return false;
-    }
-
-    /**
-     * Log debug information.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    protected function debug_log( $message, $context = array() ) {
-        if ( ! $this->is_debug_enabled() ) {
-            return;
-        }
-
-        $line = '[KISS_WOO_COS] ' . (string) $message;
-        if ( ! empty( $context ) ) {
-            $encoded = wp_json_encode( $context );
-            if ( $encoded ) {
-                $line .= ' ' . $encoded;
-            }
-        }
-
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( $line );
-    }
-
-    /**
      * Get debug information from the last lookup.
      *
      * @return array Debug information array.
@@ -65,10 +25,12 @@ class KISS_Woo_COS_Search {
      * Find matching customers by email or name.
      *
      * @param string $term Search term.
+     * @param array  $filters Optional array of KISS_Woo_Order_Filter instances.
      *
-     * @return array
+     * @return array Flat array of customers if no filters, or structured hash if filters applied.
+     *               Structured hash contains: 'customers', 'guest_orders', 'orders'.
      */
-    public function search_customers( $term ) {
+    public function search_customers( $term, $filters = array() ) {
         $t0 = microtime( true );
         $term = trim( $term );
 
@@ -98,7 +60,7 @@ class KISS_Woo_COS_Search {
             $is_email_search = ( false !== strpos( $term, '@' ) );
 
             $user_query_args = array(
-                'number'                 => 20,
+                'number'                 => 40,
                 'fields'                 => $user_fields,
                 'orderby'                => 'registered',
                 'order'                  => 'DESC',
@@ -164,24 +126,52 @@ class KISS_Woo_COS_Search {
                     'registered'    => $registered,
                     'registered_h'  => esc_html( $this->format_date_human( $registered ) ),
                     'orders'        => $order_count,
-                    'edit_url'      => esc_url( get_edit_user_link( $user_id ) ),
+                    'edit_url'      => get_edit_user_link( $user_id ), // Don't escape - already safe from admin_url() and will be used in JavaScript
                     'orders_list'   => $orders_list,
                 );
             }
         }
 
+        // Apply filters if provided (SOLID - Open/Closed Principle).
+        // When filters are present, wrap results in structured hash for filter contract.
+        if ( ! empty( $filters ) ) {
+            $structured_results = array(
+                'customers'    => $results,
+                'guest_orders' => array(), // Filters may populate this
+                'orders'       => array(), // Filters may populate this
+            );
+            $results = $this->apply_filters_to_results( $structured_results, $filters );
+        }
+
         $elapsed_ms = ( microtime( true ) - $t0 ) * 1000;
 
-        $this->debug_log(
-            'search_customers',
-            array(
-                'term'          => $term,
-                'path'          => $used_path,
-                'lookup_debug'  => $this->last_lookup_debug,
-                'results_users' => is_array( $users ) ? count( $users ) : 0,
-                'elapsed_ms'    => round( $elapsed_ms, 2 ),
-            )
-        );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'search_customers', array(
+            'term'          => $term,
+            'path'          => $used_path,
+            'lookup_debug'  => $this->last_lookup_debug,
+            'results_users' => is_array( $users ) ? count( $users ) : 0,
+            'filters_count' => count( $filters ),
+            'elapsed_ms'    => round( $elapsed_ms, 2 ),
+        ) );
+
+        return $results;
+    }
+
+    /**
+     * Apply filters to search results.
+     *
+     * Follows SOLID Open/Closed Principle: extend functionality without modifying existing code.
+     *
+     * @param array $results Search results.
+     * @param array $filters Array of KISS_Woo_Order_Filter instances.
+     * @return array Filtered results.
+     */
+    private function apply_filters_to_results( array $results, array $filters ): array {
+        foreach ( $filters as $filter ) {
+            if ( $filter instanceof KISS_Woo_Order_Filter ) {
+                $results = $filter->apply( $results );
+            }
+        }
 
         return $results;
     }
@@ -201,7 +191,7 @@ class KISS_Woo_COS_Search {
      *
      * @return int[]
      */
-    protected function search_user_ids_via_customer_lookup( $term, $limit = 20 ) {
+    protected function search_user_ids_via_customer_lookup( $term, $limit = 40 ) {
         global $wpdb;
 
         $this->last_lookup_debug = array(
@@ -225,8 +215,10 @@ class KISS_Woo_COS_Search {
         $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
         if ( $exists !== $table ) {
             $this->last_lookup_debug['enabled'] = false;
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] wc_customer_lookup table NOT FOUND: ' . $table . ' (got: ' . var_export( $exists, true ) . ')' );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'customer_lookup_table_missing', array(
+                'table'  => $table,
+                'result' => var_export( $exists, true ),
+            ), 'error' );
             return array();
         }
 
@@ -265,15 +257,19 @@ class KISS_Woo_COS_Search {
                 $sql = $wpdb->remove_placeholder_escape( $sql );
             }
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix SQL: ' . $sql );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'name_pair_prefix_sql', array(
+                'sql' => $sql,
+            ) );
 
             $t_start = microtime( true );
             $ids = $wpdb->get_col( $sql );
             $t_elapsed = round( ( microtime( true ) - $t_start ) * 1000, 2 );
 
-            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log( '[KISS_WOO_COS] name_pair_prefix result count: ' . count( $ids ) . ' | time: ' . $t_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'name_pair_prefix_result', array(
+                'count'     => count( $ids ),
+                'time_ms'   => $t_elapsed,
+                'memory_mb' => round( memory_get_usage() / 1024 / 1024, 2 ),
+            ) );
         } else {
             $this->last_lookup_debug['mode'] = 'prefix_multi_column';
             // Prefix search across indexed-ish columns.
@@ -407,16 +403,20 @@ class KISS_Woo_COS_Search {
 
         $t_counts_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_start', array(
+            'user_count' => count( $user_ids ),
+            'memory_mb'  => round( memory_get_usage() / 1024 / 1024, 2 ),
+        ) );
 
         try {
             if ( class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' ) &&
                 method_exists( 'Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled' ) &&
                 \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
                 $counts = $this->get_order_counts_hpos( $user_ids );
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log( '[KISS_WOO_COS] get_order_counts DONE (HPOS) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+                KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_done_hpos', array(
+                    'time_ms'   => round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ),
+                    'memory_mb' => round( memory_get_usage() / 1024 / 1024, 2 ),
+                ) );
                 return $counts + $order_counts;
             }
         } catch ( Exception $e ) {
@@ -425,8 +425,10 @@ class KISS_Woo_COS_Search {
 
         $legacy_counts = $this->get_order_counts_legacy_batch( $user_ids );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_order_counts DONE (legacy) | time: ' . round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ) . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_order_counts_done_legacy', array(
+            'time_ms'   => round( ( microtime( true ) - $t_counts_start ) * 1000, 2 ),
+            'memory_mb' => round( memory_get_usage() / 1024 / 1024, 2 ),
+        ) );
 
         return $legacy_counts + $order_counts;
     }
@@ -949,13 +951,10 @@ class KISS_Woo_COS_Search {
         static $call_count = 0;
         $call_count++;
         if ( $call_count === 2 ) {
-            $this->debug_log(
-                'warning_potential_n_plus_one',
-                array(
-                    'hint'  => 'get_recent_orders_for_customer() called multiple times; prefer get_recent_orders_for_customers().',
-                    'count' => $call_count,
-                )
-            );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'warning_potential_n_plus_one', array(
+                'hint'  => 'get_recent_orders_for_customer() called multiple times; prefer get_recent_orders_for_customers().',
+                'count' => $call_count,
+            ), 'warn' );
         }
 
         if ( ! function_exists( 'wc_get_orders' ) ) {
@@ -1019,12 +1018,14 @@ class KISS_Woo_COS_Search {
 
         $t_orders_start = microtime( true );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders_for_customers START - user_ids: ' . implode( ',', $user_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_recent_orders_start', array(
+            'user_count' => count( $user_ids ),
+            'memory_mb'  => round( memory_get_usage() / 1024 / 1024, 2 ),
+        ) );
 
         // NOTE: Do not rely on `wc_get_orders( [ 'customer' => [ids...] ] )`.
         // Some WooCommerce versions/docs only support a single customer ID/email.
-        // Instead, fetch matching order IDs with a direct legacy SQL query (IN list),
+        // Instead, fetch matching order IDs with a direct SQL query (IN list),
         // then hydrate those orders in one go.
 
         $statuses = array_keys( wc_get_order_statuses() );
@@ -1036,29 +1037,51 @@ class KISS_Woo_COS_Search {
         // (Worst case: many recent orders belong to one customer.)
         $candidate_limit = count( $user_ids ) * 10 * 5;
 
+        // Detect HPOS to use correct table structure.
+        $use_hpos = KISS_Woo_Utils::is_hpos_enabled();
+
         $status_placeholders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
         $user_placeholders   = implode( ',', array_fill( 0, count( $user_ids ), '%s' ) );
 
-        $sql = $wpdb->prepare(
-            "SELECT p.ID AS order_id, pm.meta_value AS customer_id
-             FROM {$wpdb->posts} p
-             INNER JOIN {$wpdb->postmeta} pm
-                ON p.ID = pm.post_id
-               AND pm.meta_key = '_customer_user'
-             WHERE p.post_type = 'shop_order'
-               AND p.post_status IN ({$status_placeholders})
-               AND pm.meta_value IN ({$user_placeholders})
-             ORDER BY p.post_date_gmt DESC
-             LIMIT %d",
-            array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
-        );
+        if ( $use_hpos ) {
+            // HPOS: Query wc_orders table.
+            $orders_table = $wpdb->prefix . 'wc_orders';
+            $sql = $wpdb->prepare(
+                "SELECT id AS order_id, customer_id
+                 FROM {$orders_table}
+                 WHERE type = 'shop_order'
+                   AND status IN ({$status_placeholders})
+                   AND customer_id IN ({$user_placeholders})
+                 ORDER BY date_created_gmt DESC
+                 LIMIT %d",
+                array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
+            );
+        } else {
+            // Legacy: Query wp_posts and wp_postmeta.
+            $sql = $wpdb->prepare(
+                "SELECT p.ID AS order_id, pm.meta_value AS customer_id
+                 FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pm
+                    ON p.ID = pm.post_id
+                   AND pm.meta_key = '_customer_user'
+                 WHERE p.post_type = 'shop_order'
+                   AND p.post_status IN ({$status_placeholders})
+                   AND pm.meta_value IN ({$user_placeholders})
+                 ORDER BY p.post_date_gmt DESC
+                 LIMIT %d",
+                array_merge( $statuses, array_map( 'strval', $user_ids ), array( (int) $candidate_limit ) )
+            );
+        }
 
         $t_sql_start = microtime( true );
         $rows = $wpdb->get_results( $sql );
         $t_sql_elapsed = round( ( microtime( true ) - $t_sql_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] get_recent_orders SQL done - rows: ' . count( $rows ) . ' | time: ' . $t_sql_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'get_recent_orders_sql_done', array(
+            'row_count'  => count( $rows ),
+            'time_ms'    => $t_sql_elapsed,
+            'memory_mb'  => round( memory_get_usage() / 1024 / 1024, 2 ),
+        ) );
 
         if ( empty( $rows ) ) {
             return $results;
@@ -1091,8 +1114,10 @@ class KISS_Woo_COS_Search {
             return $results;
         }
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration START - order_ids: ' . count( $all_order_ids ) . ' | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'order_hydration_start', array(
+            'order_count' => count( $all_order_ids ),
+            'memory_mb'   => round( memory_get_usage() / 1024 / 1024, 2 ),
+        ) );
 
         // IMPORTANT: Avoid wc_get_orders() - it triggers expensive hooks/plugins on large sites.
         // Use direct SQL to fetch only the fields we need for display.
@@ -1100,8 +1125,11 @@ class KISS_Woo_COS_Search {
         $order_data = $this->get_order_data_via_sql( $all_order_ids );
         $t_hydrate_elapsed = round( ( microtime( true ) - $t_hydrate_start ) * 1000, 2 );
 
-        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-        error_log( '[KISS_WOO_COS] order hydration DONE - orders: ' . count( $order_data ) . ' | time: ' . $t_hydrate_elapsed . 'ms | memory: ' . round( memory_get_usage() / 1024 / 1024, 2 ) . 'MB' );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'order_hydration_done', array(
+            'order_count' => count( $order_data ),
+            'time_ms'     => $t_hydrate_elapsed,
+            'memory_mb'   => round( memory_get_usage() / 1024 / 1024, 2 ),
+        ) );
 
         if ( empty( $order_data ) ) {
             return $results;
@@ -1232,13 +1260,10 @@ class KISS_Woo_COS_Search {
             $this->last_lookup_debug['result'] = 'not_order_like';
             $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
             $this->last_lookup_debug['trace'][] = 'Not an order-like term - returning empty';
-            $this->debug_log(
-                'search_orders_by_number_skip',
-                array(
-                    'term'   => $term,
-                    'reason' => 'Not an order-like term',
-                )
-            );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'search_orders_by_number_skip', array(
+                'term'   => $term,
+                'reason' => 'Not an order-like term',
+            ) );
             return array(); // Not an order number format
         }
 
@@ -1275,30 +1300,24 @@ class KISS_Woo_COS_Search {
                 $this->last_lookup_debug['result'] = 'found_fast_path';
                 $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
 
-                $this->debug_log(
-                    'search_orders_by_number_success_fast_path',
-                    array(
-                        'term'       => $term,
-                        'order_id'   => $parsed['id'],
-                        'method'     => 'direct_id_lookup',
-                        'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
-                    )
-                );
+                KISS_Woo_Debug_Tracer::log( 'Search', 'search_orders_by_number_success_fast_path', array(
+                    'term'       => $term,
+                    'order_id'   => $parsed['id'],
+                    'method'     => 'direct_id_lookup',
+                    'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
+                ) );
 
                 return $result;
             }
 
             // Order exists but number doesn't match - will try meta lookup
             $this->last_lookup_debug['trace'][] = 'Fast path mismatch - trying meta lookup';
-            $this->debug_log(
-                'search_orders_by_number_mismatch_trying_meta',
-                array(
-                    'term'                => $term,
-                    'parsed_id'           => $parsed['id'],
-                    'expected_normalized' => $expected_normalized,
-                    'actual_normalized'   => $actual_normalized,
-                )
-            );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'search_orders_by_number_mismatch_trying_meta', array(
+                'term'                => $term,
+                'parsed_id'           => $parsed['id'],
+                'expected_normalized' => $expected_normalized,
+                'actual_normalized'   => $actual_normalized,
+            ) );
         } else {
             $this->last_lookup_debug['trace'][] = 'Fast path failed - order does not exist with ID ' . $parsed['id'];
         }
@@ -1321,15 +1340,12 @@ class KISS_Woo_COS_Search {
         $this->last_lookup_debug['result'] = 'not_found';
         $this->last_lookup_debug['elapsed_ms'] = round( ( microtime( true ) - $t0 ) * 1000, 2 );
 
-        $this->debug_log(
-            'search_orders_by_number_not_found',
-            array(
-                'term'       => $term,
-                'parsed_id'  => $parsed['id'],
-                'expected'   => $expected_normalized,
-                'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
-            )
-        );
+        KISS_Woo_Debug_Tracer::log( 'Search', 'search_orders_by_number_not_found', array(
+            'term'       => $term,
+            'parsed_id'  => $parsed['id'],
+            'expected'   => $expected_normalized,
+            'elapsed_ms' => $this->last_lookup_debug['elapsed_ms'],
+        ) );
 
         return array();
 
@@ -1472,13 +1488,10 @@ class KISS_Woo_COS_Search {
         if ( ! $order_id ) {
             $this->last_lookup_debug['trace'][] = 'META LOOKUP FAILED - No order_id found';
             $this->last_lookup_debug['meta_lookup']['result'] = 'not_found';
-            $this->debug_log(
-                'search_order_by_meta_not_found',
-                array(
-                    'order_number' => $order_number,
-                    'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
-                )
-            );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'search_order_by_meta_not_found', array(
+                'order_number' => $order_number,
+                'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+            ) );
             return array();
         }
 
@@ -1507,14 +1520,11 @@ class KISS_Woo_COS_Search {
         if ( $actual_normalized !== $order_number ) {
             $this->last_lookup_debug['trace'][] = 'ORDER NUMBER MISMATCH - Returning empty';
             $this->last_lookup_debug['meta_lookup']['result'] = 'number_mismatch';
-            $this->debug_log(
-                'search_order_by_meta_mismatch',
-                array(
-                    'expected'   => $order_number,
-                    'actual'     => $actual_normalized,
-                    'order_id'   => $order_id,
-                )
-            );
+            KISS_Woo_Debug_Tracer::log( 'Search', 'search_order_by_meta_mismatch', array(
+                'expected' => $order_number,
+                'actual'   => $actual_normalized,
+                'order_id' => $order_id,
+            ) );
             return array();
         }
 
@@ -1523,14 +1533,12 @@ class KISS_Woo_COS_Search {
         $this->last_lookup_debug['meta_lookup']['result'] = 'success';
         $result = array( $this->format_order_for_output( $order ) );
 
-        $this->debug_log(
-            'search_orders_by_number_success_meta_lookup',
-            array(
-                'order_number' => $order_number,
-                'order_id'     => $order_id,
-                'method'       => 'meta_lookup',
-                'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
-            )
+        KISS_Woo_Debug_Tracer::log( 'Search', 'search_orders_by_number_success_meta_lookup', array(
+            'order_number' => $order_number,
+            'order_id'     => $order_id,
+            'method'       => 'meta_lookup',
+            'elapsed_ms'   => round( ( microtime( true ) - $t0 ) * 1000, 2 ),
+        )
         );
 
         return $result;
@@ -1555,7 +1563,7 @@ class KISS_Woo_COS_Search {
 
         $orders = wc_get_orders(
             array(
-                'limit'         => 20,
+                'limit'         => 40,
                 'orderby'       => 'date',
                 'order'         => 'DESC',
                 'status'        => array_keys( wc_get_order_statuses() ),

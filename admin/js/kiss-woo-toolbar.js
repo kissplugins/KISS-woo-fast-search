@@ -13,8 +13,12 @@
     const toolbar = document.getElementById('floating-search-toolbar');
     const input = document.getElementById('floating-search-input');
     const submitBtn = document.getElementById('floating-search-submit');
+    const menuToggle = document.getElementById('floating-search-menu-toggle');
+    const menu = document.querySelector('.floating-search-menu');
+    const menuItems = document.querySelectorAll('.floating-search-menu-item');
+    const scopeInputs = document.querySelectorAll('input[name="kiss-search-scope"]');
 
-    if (!toolbar || !input || !submitBtn) {
+    if (!toolbar || !input || !submitBtn || !scopeInputs.length) {
         return;
     }
 
@@ -23,6 +27,85 @@
 
     // Store original button text
     const originalBtnText = submitBtn.textContent;
+    const placeholderUsers = input.getAttribute('data-placeholder-users') || input.placeholder || '';
+    const placeholderCoupons = input.getAttribute('data-placeholder-coupons') || input.placeholder || '';
+
+    function getSearchScope() {
+        for (let i = 0; i < scopeInputs.length; i++) {
+            if (scopeInputs[i].checked) {
+                return scopeInputs[i].value;
+            }
+        }
+        return 'users';
+    }
+
+    function saveScope(scope) {
+        try {
+            localStorage.setItem('kiss_woo_search_scope', scope);
+        } catch (e) {
+            // localStorage not available (private browsing, etc.)
+        }
+    }
+
+    function loadScope() {
+        try {
+            return localStorage.getItem('kiss_woo_search_scope') || 'users';
+        } catch (e) {
+            return 'users';
+        }
+    }
+
+    function syncPlaceholderForScope() {
+        const scope = getSearchScope();
+        if (scope === 'coupons') {
+            input.placeholder = placeholderCoupons;
+        } else {
+            input.placeholder = placeholderUsers;
+        }
+    }
+
+    // Save scope to localStorage when changed
+    scopeInputs.forEach(function(inputEl) {
+        inputEl.addEventListener('change', function() {
+            const scope = getSearchScope();
+            saveScope(scope);
+            syncPlaceholderForScope();
+        });
+    });
+
+    // Restore saved scope on page load
+    // BUT: If we're in wholesale/recent listing mode, force scope to 'users'
+    var savedScope = loadScope();
+
+    // Check if we're in listing mode (wholesale or recent orders)
+    var isListingMode = (typeof KISSCOS !== 'undefined' && (KISSCOS.list_wholesale || KISSCOS.list_recent));
+
+    if (isListingMode) {
+        // Force scope to 'users' when viewing order lists
+        savedScope = 'users';
+        saveScope('users'); // Update localStorage to prevent confusion
+
+        if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+            console.log('🔒 KISS Toolbar: Listing mode detected, forcing scope to "users"');
+        }
+    }
+
+    // Set the correct radio button
+    scopeInputs.forEach(function(inputEl) {
+        if (inputEl.value === savedScope) {
+            inputEl.checked = true;
+        } else {
+            inputEl.checked = false;
+        }
+    });
+    syncPlaceholderForScope();
+
+    // Disable scope toggle in listing mode
+    if (isListingMode) {
+        scopeInputs.forEach(function(inputEl) {
+            inputEl.disabled = true;
+        });
+    }
 
     /**
      * Explicit State Machine for Toolbar Search
@@ -135,8 +218,16 @@
             return;
         }
 
+        const scope = getSearchScope();
+
         // Transition to SEARCHING state
         if (!transitionTo(ToolbarState.SEARCHING)) {
+            return;
+        }
+
+        // Coupons scope: skip AJAX direct-order search and go straight to search page.
+        if (scope === 'coupons') {
+            fallbackToSearchPage(searchTerm, scope);
             return;
         }
 
@@ -167,10 +258,10 @@
                 console.log('🔍 KISS Toolbar: AJAX response', resp);
             }
 
-            // If we got a direct order match, redirect immediately
+            // If we got a direct match (order or coupon), redirect immediately
             if (resp && resp.success && resp.data && resp.data.should_redirect_to_order && resp.data.redirect_url) {
                 if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
-                    console.log('✅ KISS Toolbar: Direct order match found, redirecting to:', resp.data.redirect_url);
+                    console.log('✅ KISS Toolbar: Direct match found, redirecting to:', resp.data.redirect_url);
                 }
                 transitionTo(ToolbarState.REDIRECTING_ORDER);
                 window.location.href = resp.data.redirect_url;
@@ -181,7 +272,7 @@
             if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
                 console.log('📋 KISS Toolbar: No direct match, going to search page');
             }
-            fallbackToSearchPage(searchTerm);
+            fallbackToSearchPage(searchTerm, scope);
 
         }).fail(function(xhr, status, error) {
             // Only process if still in SEARCHING state
@@ -199,21 +290,22 @@
                 console.log('⚠️ KISS Toolbar: AJAX failed, falling back to search page', error);
             }
             // On error, fall back to search page
-            fallbackToSearchPage(searchTerm);
+            fallbackToSearchPage(searchTerm, scope);
         }).always(function() {
             currentXhr = null;
         });
     }
 
-    function fallbackToSearchPage(searchTerm) {
+    function fallbackToSearchPage(searchTerm, scope) {
         const baseUrl = (floatingSearchBar && floatingSearchBar.searchUrl) ? floatingSearchBar.searchUrl : '';
         if (!baseUrl) {
             // Reset to IDLE state
             transitionTo(ToolbarState.IDLE);
             return;
         }
+        const searchScope = scope || 'users';
         transitionTo(ToolbarState.REDIRECTING_SEARCH);
-        window.location.href = baseUrl + '&q=' + encodeURIComponent(searchTerm);
+        window.location.href = baseUrl + '&q=' + encodeURIComponent(searchTerm) + '&scope=' + encodeURIComponent(searchScope);
     }
 
     submitBtn.addEventListener('click', handleSearch);
@@ -225,6 +317,70 @@
         }
     });
 
+    // Dropdown menu handlers
+    if (menuToggle && menu) {
+        // Toggle dropdown on click
+        menuToggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const isExpanded = menuToggle.getAttribute('aria-expanded') === 'true';
+            menuToggle.setAttribute('aria-expanded', !isExpanded);
+            menu.setAttribute('aria-hidden', isExpanded);
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!menuToggle.contains(e.target) && !menu.contains(e.target)) {
+                menuToggle.setAttribute('aria-expanded', 'false');
+                menu.setAttribute('aria-hidden', 'true');
+            }
+        });
+
+        // Handle menu item clicks
+        menuItems.forEach(function(item) {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                const action = this.getAttribute('data-action');
+                const baseUrl = (floatingSearchBar && floatingSearchBar.searchUrl) ? floatingSearchBar.searchUrl : '';
+
+                if (!baseUrl) {
+                    console.error('KISS Toolbar: searchUrl not found in floatingSearchBar config');
+                    alert('Configuration error: search URL not found');
+                    return;
+                }
+
+                // Close dropdown
+                menuToggle.setAttribute('aria-expanded', 'false');
+                menu.setAttribute('aria-hidden', 'true');
+
+                if (typeof KISSCOS !== 'undefined' && KISSCOS.debug) {
+                    console.log('🏷️ KISS Toolbar: Menu action:', action);
+                }
+
+                transitionTo(ToolbarState.REDIRECTING_SEARCH);
+
+                // Redirect based on action
+                if (action === 'wholesale') {
+                    window.location.href = baseUrl + '&list_wholesale=1';
+                } else if (action === 'recent') {
+                    window.location.href = baseUrl + '&list_recent=1';
+                }
+            });
+        });
+
+        // Keyboard navigation
+        menuToggle.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                menuToggle.click();
+            }
+        });
+    } else {
+        console.warn('KISS Toolbar: Dropdown menu not found in DOM');
+    }
+
     // Clear safety timeout on successful navigation
     window.addEventListener('beforeunload', function() {
         if (safetyTimeout) {
@@ -234,4 +390,3 @@
     });
 
 })(jQuery);
-

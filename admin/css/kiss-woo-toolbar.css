@@ -46,16 +46,91 @@
     height: 100%;
 }
 
+.floating-search-toolbar__section--left {
+    margin-right: auto;
+}
+
 .floating-search-toolbar__section--search {
     margin-left: auto;
+    gap: 10px;
 }
 
 .floating-search-toolbar__speed-label {
     color:rgb(240, 240, 241);
     font-size: 13px;
     font-weight: 600;
-    margin-right: 10px;
+    margin-right: 0;
     white-space: nowrap;
+}
+
+.floating-search-toolbar__controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* iOS-style segmented toggle */
+.floating-search-toggle {
+    --toggle-pad: 2px;
+    position: relative;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    height: 24px;
+    min-width: 190px;
+    padding: var(--toggle-pad);
+    border-radius: 999px;
+    background: #2c3338;
+    border: 1px solid #3c434a;
+    box-sizing: border-box;
+}
+
+.floating-search-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.floating-search-toggle label {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #c3c4c7;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+#kiss-search-scope-users:checked + label,
+#kiss-search-scope-coupons:checked + label {
+    color: #fff;
+}
+
+.floating-search-toggle input:focus-visible + label {
+    box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.6);
+    border-radius: 999px;
+}
+
+.floating-search-toggle__thumb {
+    position: absolute;
+    top: var(--toggle-pad);
+    bottom: var(--toggle-pad);
+    left: var(--toggle-pad);
+    width: calc(50% - var(--toggle-pad));
+    background: #2271b1;
+    border-radius: 999px;
+    transition: transform 0.2s ease;
+    z-index: 1;
+}
+
+#kiss-search-scope-coupons:checked ~ .floating-search-toggle__thumb {
+    transform: translateX(100%);
 }
 
 /* Search input styled like WP admin bar */
@@ -86,6 +161,88 @@
     color: #999;
 }
 
+/* Context-aware toolbar: Disable scope toggle in listing mode */
+.floating-search-toolbar--listing-mode .floating-search-toggle {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* Dropdown menu */
+.floating-search-dropdown {
+    position: relative;
+}
+
+.floating-search-menu-toggle {
+    background: transparent;
+    border: none;
+    color: rgb(240, 240, 241);
+    cursor: pointer;
+    font-size: 13px;
+    height: 32px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.1s ease-in-out, color 0.1s ease-in-out;
+}
+
+.floating-search-menu-toggle:hover,
+.floating-search-menu-toggle:focus,
+.floating-search-menu-toggle[aria-expanded="true"] {
+    background: #2271b1;
+    color: #fff;
+    outline: none;
+}
+
+.floating-search-menu-arrow {
+    font-size: 10px;
+    transition: transform 0.2s ease-in-out;
+}
+
+.floating-search-menu-toggle[aria-expanded="true"] .floating-search-menu-arrow {
+    transform: rotate(180deg);
+}
+
+.floating-search-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    min-width: 200px;
+    z-index: 10000;
+    display: none;
+}
+
+.floating-search-menu[aria-hidden="false"] {
+    display: block;
+}
+
+.floating-search-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    color: #1d2327;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s ease-in-out;
+}
+
+.floating-search-menu-item:hover,
+.floating-search-menu-item:focus {
+    background: #f0f0f1;
+    outline: none;
+}
+
 /* Button styled like admin bar items */
 .floating-search-submit {
     background: transparent;
@@ -106,17 +263,22 @@
 }
 
 @media screen and (max-width: 782px) {
-    .floating-search-submit {
+    .floating-search-submit,
+    .floating-search-menu-toggle {
         height: 46px;
     }
 
     .floating-search-input {
         height: 34px;
-        width: 150px;
+        width: 140px;
     }
 
     .floating-search-toolbar__speed-label {
         display: none;
     }
-}
 
+    .floating-search-toggle {
+        height: 30px;
+        min-width: 150px;
+    }
+}

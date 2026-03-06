@@ -117,26 +117,82 @@ class KISS_Woo_COS_Floating_Search_Bar {
             return;
         }
 
+        // Check if we're in listing mode (wholesale or recent orders)
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL parameters.
+        $is_listing_mode = ( isset( $_GET['list_wholesale'] ) && '1' === $_GET['list_wholesale'] ) ||
+                          ( isset( $_GET['list_recent'] ) && '1' === $_GET['list_recent'] );
+
+        $toolbar_class = $is_listing_mode ? 'floating-search-toolbar--listing-mode' : '';
         ?>
-        <div id="floating-search-toolbar">
+        <div id="floating-search-toolbar" class="<?php echo esc_attr( $toolbar_class ); ?>">
+            <div class="floating-search-toolbar__section floating-search-toolbar__section--left">
+                <div class="floating-search-dropdown">
+                    <button
+                        type="button"
+                        id="floating-search-menu-toggle"
+                        class="floating-search-menu-toggle"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        title="<?php esc_attr_e( 'Quick access to order lists', 'kiss-woo-customer-order-search' ); ?>"
+                    >
+                        <?php esc_html_e( 'Fast Search...', 'kiss-woo-customer-order-search' ); ?>
+                        <span class="floating-search-menu-arrow" aria-hidden="true">▼</span>
+                    </button>
+                    <ul class="floating-search-menu" role="menu" aria-hidden="true">
+                        <li role="none">
+                            <button
+                                type="button"
+                                role="menuitem"
+                                id="floating-search-recent"
+                                class="floating-search-menu-item"
+                                data-action="recent"
+                            >
+                                <?php esc_html_e( 'Recent Orders', 'kiss-woo-customer-order-search' ); ?>
+                            </button>
+                        </li>
+                        <li role="none">
+                            <button
+                                type="button"
+                                role="menuitem"
+                                id="floating-search-wholesale"
+                                class="floating-search-menu-item"
+                                data-action="wholesale"
+                            >
+                                <?php esc_html_e( 'Wholesale Orders Only', 'kiss-woo-customer-order-search' ); ?>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
             <div class="floating-search-toolbar__section floating-search-toolbar__section--search">
                 <span class="floating-search-toolbar__speed-label">
                     <?php esc_html_e( 'Ultra Fast Search (3-4x faster)', 'kiss-woo-customer-order-search' ); ?>
                 </span>
-                <input
-                    type="text"
-                    id="floating-search-input"
-                    class="floating-search-input"
-                    placeholder="<?php esc_attr_e( 'Search order ID, email, or name…', 'kiss-woo-customer-order-search' ); ?>"
-                    autocomplete="off"
-                />
-                <button
-                    type="button"
-                    id="floating-search-submit"
-                    class="floating-search-submit"
-                >
-                    <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
-                </button>
+                <div class="floating-search-toolbar__controls">
+                    <div class="floating-search-toggle" role="group" aria-label="<?php esc_attr_e( 'Search scope', 'kiss-woo-customer-order-search' ); ?>">
+                        <input type="radio" id="kiss-search-scope-users" name="kiss-search-scope" value="users" checked />
+                        <label for="kiss-search-scope-users"><?php esc_html_e( 'Users/Orders', 'kiss-woo-customer-order-search' ); ?></label>
+                        <input type="radio" id="kiss-search-scope-coupons" name="kiss-search-scope" value="coupons" />
+                        <label for="kiss-search-scope-coupons"><?php esc_html_e( 'Coupons', 'kiss-woo-customer-order-search' ); ?></label>
+                        <span class="floating-search-toggle__thumb" aria-hidden="true"></span>
+                    </div>
+                    <input
+                        type="text"
+                        id="floating-search-input"
+                        class="floating-search-input"
+                        placeholder="<?php esc_attr_e( 'Search order ID, email, or name…', 'kiss-woo-customer-order-search' ); ?>"
+                        data-placeholder-users="<?php esc_attr_e( 'Search order ID, email, or name…', 'kiss-woo-customer-order-search' ); ?>"
+                        data-placeholder-coupons="<?php esc_attr_e( 'Search coupon code or title…', 'kiss-woo-customer-order-search' ); ?>"
+                        autocomplete="off"
+                    />
+                    <button
+                        type="button"
+                        id="floating-search-submit"
+                        class="floating-search-submit"
+                    >
+                        <?php esc_html_e( 'Search', 'kiss-woo-customer-order-search' ); ?>
+                    </button>
+                </div>
             </div>
         </div>
         <?php

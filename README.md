@@ -8,6 +8,12 @@ A lightweight WordPress plugin that adds a WooCommerce admin page for quickly se
 - WooCommerce active
 - An administrator or shop manager role (capability `manage_woocommerce`) to access the pages and AJAX endpoint.
 
+Populating Existing Coupons (Backfilling): The plugin has two ways to add your existing coupons to the lookup table:
+
+**On-Demand (Lazy Backfill):** When you search for a coupon, if it isn't in the fast lookup table yet, the plugin finds it using the standard (slower) WordPress method and then automatically adds it to the lookup table. This makes all future searches for that coupon instant.
+
+**Manual Trigger** (WP-CLI): For sites with many existing coupons, the plugin provides a wp kiss-woo coupons backfill command. This allows a developer to efficiently populate the entire lookup table from the command line, processing thousands of coupons in batches.
+
 ## Features
 - Admin submenu under WooCommerce with a simple search form for customers and guest orders.
 - Capability and nonce checks on the AJAX handler to prevent unauthorized access.
