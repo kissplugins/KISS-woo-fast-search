@@ -1,0 +1,52 @@
+/**
+ * KISS Woo Fast Order Search - Gutenberg Block Editor Overrides
+ *
+ * The block editor has its own layout system. Key selectors:
+ *   .edit-post-header          — the top editor toolbar
+ *   .interface-interface-skeleton__header — newer WP versions
+ *   .editor-styles-wrapper     — the content canvas
+ *   .edit-post-layout          — outer layout wrapper
+ *
+ * Gutenberg fullscreen mode removes #wpadminbar and shifts
+ * everything up. We detect this via body.is-fullscreen-mode.
+ */
+
+/* ----------------------------------------------------------------
+   1. PUSH GUTENBERG LAYOUT DOWN
+
+   The editor's skeleton layout uses position: fixed or sticky
+   headers. We offset them by our toolbar height.
+   ---------------------------------------------------------------- */
+
+/* Modern Gutenberg (WP 6.x+) — interface skeleton */
+.interface-interface-skeleton {
+    top: calc(var(--kiss-wp-admin-bar-height, 32px) + var(--kiss-toolbar-height, 36px)) !important;
+}
+
+/* Fullscreen mode — no admin bar, just our toolbar */
+body.is-fullscreen-mode .interface-interface-skeleton {
+    top: var(--kiss-toolbar-height, 36px) !important;
+}
+
+/* Legacy layout selector (pre-6.3 compat) */
+.edit-post-layout {
+    padding-top: 0; /* reset any existing padding; our offset on skeleton handles it */
+}
+
+/* ----------------------------------------------------------------
+   2. RESET MAIN-CSS CONTENT PUSH ON BLOCK EDITOR PAGES
+
+   kiss-woo-toolbar.css pushes #wpcontent and #adminmenuwrap down via
+   margin-top. The block editor's skeleton is position: fixed and
+   handles its own offset (see rules above). If both apply, content
+   could shift down twice (toolbar height added to both skeleton top
+   AND wpcontent margin).
+
+   Reset the main-CSS push here so only the skeleton offset applies.
+   This file only loads on block editor screens (enqueue_block_editor_assets).
+   ---------------------------------------------------------------- */
+body.kiss-toolbar-active #wpcontent,
+body.kiss-toolbar-active #adminmenuwrap {
+    margin-top: 0 !important;
+}
+

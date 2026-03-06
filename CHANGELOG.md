@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.18] - 2026-03-06
+
+### Fixed
+- **CRITICAL: `current_user_can()` called too early at `plugins_loaded`** — Toolbar bootstrap (`toolbar.php:202`) called `current_user_can('manage_woocommerce')` at file-include time during `plugins_loaded`, before WordPress initializes the user session (which happens at `init`). This could cause the toolbar to silently fail to load for legitimate users.
+  - **Fix**: Removed capability check from bootstrap; only `is_admin()` is checked at include time. All three callback methods (`enqueue_assets`, `render_toolbar`, `add_toolbar_body_class`) already gate on `current_user_can('manage_woocommerce')` and fire on later hooks where the user session is available.
+
+- **HIGH: Unscoped `!important` on core WP selectors** — `#wpcontent` and `#adminmenuwrap` margin-top rules used bare global selectors with `!important`, risking conflicts with other plugins/themes.
+  - **Fix**: Scoped rules under `body.kiss-toolbar-active` — a new server-side body class added via `admin_body_class` filter. This provides a kill-switch: if the toolbar class isn't instantiated or the user lacks capability, the body class is absent and layout-push rules don't apply.
+  - **Files Modified**: `toolbar.php` (new `add_toolbar_body_class()` method + filter hook), `admin/css/kiss-woo-toolbar.css`
+
+- **MEDIUM: Potential double-offset on Gutenberg block editor pages** — Both `kiss-woo-toolbar.css` (pushes `#wpcontent` down) and `kiss-woo-toolbar-editor.css` (pushes `.interface-interface-skeleton` down) loaded on editor pages. If the editor layout ever falls back to flow positioning, the toolbar height would be added twice.
+  - **Fix**: `kiss-woo-toolbar-editor.css` now resets `body.kiss-toolbar-active #wpcontent` and `body.kiss-toolbar-active #adminmenuwrap` margin to `0` on block editor pages (this file only loads via `enqueue_block_editor_assets`). The skeleton offset handles editor layout exclusively.
+
+---
+
+## [1.2.17] - 2026-03-06
+
+### Fixed
+- **HIGH: Toolbar z-index and content push-down**: Rewrote toolbar CSS to properly stack below WP admin bar and push admin content down correctly
+  - **Issue**: Toolbar used `z-index: 9997` (too low, got covered by other elements) and relied on a JS-added body class (`.floating-toolbar-active`) for content push-down, which didn't push `#adminmenuwrap` (left sidebar menu)
+  - **Impact**: Toolbar could be covered by other UI elements; admin content and left sidebar overlapped with toolbar
+  - **Solution**: Adopted stacking approach from Neochrome Toolbar reference implementation:
+    - Changed `z-index` from `9997` to `99998` (just below WP admin bar's `99999`)
+    - Added CSS custom properties (`--kiss-toolbar-height`, `--kiss-wp-admin-bar-height`) for maintainable sizing
+    - Changed content push to direct selectors with `!important`: `#wpcontent` and `#adminmenuwrap` both get `margin-top`
+    - Removed dependency on `.floating-toolbar-active` body class for layout
+    - Added `body.is-fullscreen-mode` support for Gutenberg fullscreen
+  - **Files Modified**:
+    - `admin/css/kiss-woo-toolbar.css` — Rewrote positioning, z-index, and content push-down rules
+    - `admin/css/kiss-woo-toolbar-editor.css` — **NEW**: Gutenberg block editor layout overrides
+    - `toolbar.php` — Added `enqueue_block_editor_assets` hook, removed block editor skip logic
+
+### Technical Notes
+- **Z-index Stack**: WP admin bar = `99999`, KISS toolbar = `99998`, media modal = `160000`
+- **CSS Variables**: `--kiss-toolbar-height: 36px` (desktop), `46px` (mobile ≤782px)
+- **Gutenberg Support**: Toolbar now renders in block editor; `.interface-interface-skeleton` offset handles editor layout
+- **Backward Compat**: `floating-toolbar-active` body class still added by JS (harmless) but no longer required for layout
+
+---
+
 ## [1.2.16] - 2026-03-04
 
 ### Removed

@@ -34,6 +34,12 @@ class KISS_Woo_COS_Floating_Search_Bar {
 
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_action( 'admin_footer', array( $this, 'render_toolbar' ) );
+
+        // Enqueue inside the Gutenberg block editor specifically.
+        add_action( 'enqueue_block_editor_assets', array( $this, 'enqueue_block_editor_assets' ) );
+
+        // Add body class for CSS scoping (server-side kill-switch for !important rules).
+        add_filter( 'admin_body_class', array( $this, 'add_toolbar_body_class' ) );
     }
 
     /**
@@ -49,32 +55,24 @@ class KISS_Woo_COS_Floating_Search_Bar {
     }
 
     /**
-     * Detect block editor screens where the floating toolbar should not render.
+     * Add body class for CSS scoping.
      *
-     * @return bool
+     * Provides a kill-switch: if the toolbar is disabled or another plugin
+     * conflicts, the body class won't be present and the layout-push rules
+     * won't apply.
+     *
+     * @param string $classes Space-separated list of body classes.
+     * @return string
      */
-    private function is_block_editor_screen(): bool {
-        if ( ! function_exists( 'get_current_screen' ) ) {
-            return false;
+    public function add_toolbar_body_class( string $classes ): string {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return $classes;
         }
-
-        $screen = get_current_screen();
-        if ( ! $screen ) {
-            return false;
-        }
-
-        if ( method_exists( $screen, 'is_block_editor' ) ) {
-            return (bool) $screen->is_block_editor();
-        }
-
-        return false;
+        return $classes . ' kiss-toolbar-active';
     }
-    
+
     public function enqueue_assets(): void {
         if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
-            return;
-        }
-        if ( $this->is_block_editor_screen() ) {
             return;
         }
 
@@ -109,11 +107,29 @@ class KISS_Woo_COS_Floating_Search_Bar {
         );
     }
 
-    public function render_toolbar(): void {
-        if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
+    /**
+     * Enqueue specifically for the block editor (Gutenberg).
+     * This fires after the editor iframe is set up.
+     *
+     * @return void
+     */
+    public function enqueue_block_editor_assets(): void {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
             return;
         }
-        if ( $this->is_block_editor_screen() ) {
+
+        $version = defined( 'KISS_WOO_COS_VERSION' ) ? KISS_WOO_COS_VERSION : '1.0.0';
+
+        wp_enqueue_style(
+            'kiss-woo-toolbar-editor',
+            KISS_WOO_COS_URL . 'admin/css/kiss-woo-toolbar-editor.css',
+            array(),
+            $version
+        );
+    }
+
+    public function render_toolbar(): void {
+        if ( ! is_admin() || ! current_user_can( 'manage_woocommerce' ) ) {
             return;
         }
 
@@ -202,7 +218,10 @@ class KISS_Woo_COS_Floating_Search_Bar {
 }
 
 // Bootstrap immediately when this file is included by the main plugin.
-// This file is loaded during `plugins_loaded`, so hooking `plugins_loaded` here would be too late.
-if ( is_admin() && current_user_can( 'manage_woocommerce' ) ) {
+// This file is loaded during `plugins_loaded` — do NOT call current_user_can()
+// here because the user session is not yet initialized. Capability checks are
+// handled inside individual methods that fire on later hooks (admin_enqueue_scripts,
+// admin_footer, admin_body_class).
+if ( is_admin() ) {
     new KISS_Woo_COS_Floating_Search_Bar();
 }
