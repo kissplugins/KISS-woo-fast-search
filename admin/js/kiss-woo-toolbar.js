@@ -22,7 +22,8 @@
         return;
     }
 
-    // Add class to body for CSS adjustments
+    // Add class to html and body for CSS adjustments
+    document.documentElement.classList.add('floating-toolbar-active');
     document.body.classList.add('floating-toolbar-active');
 
     // Store original button text

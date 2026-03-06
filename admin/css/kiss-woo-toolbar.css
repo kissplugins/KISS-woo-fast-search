@@ -26,16 +26,19 @@
     }
 }
 
-/* Push admin content down to accommodate toolbar */
-.floating-toolbar-active #wpcontent,
-.floating-toolbar-active #wpfooter {
-    margin-top: 32px;
+/*
+ * Push all admin content down to accommodate toolbar.
+ * WP uses --wp-admin--admin-bar--height for padding-top on html.wp-toolbar
+ * and for positioning various fixed/sticky admin elements.
+ * By increasing this variable, everything adjusts automatically.
+ */
+html.floating-toolbar-active {
+    --wp-admin--admin-bar--height: 64px; /* 32px admin bar + 32px toolbar */
 }
 
 @media screen and (max-width: 782px) {
-    .floating-toolbar-active #wpcontent,
-    .floating-toolbar-active #wpfooter {
-        margin-top: 46px;
+    html.floating-toolbar-active {
+        --wp-admin--admin-bar--height: 92px; /* 46px admin bar + 46px toolbar */
     }
 }
 
